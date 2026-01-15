@@ -6,7 +6,7 @@ import {
 import { notificationService } from './notificationService';
 
 // Keys
-const K_USERS = 'tf_auth_users'; // NEW: Auth Storage
+const K_USERS = 'tf_auth_users'; 
 const K_DRIVERS = 'tf_drivers';
 const K_VEHICLES = 'tf_vehicles';
 const K_LINES = 'tf_lines';
@@ -25,26 +25,26 @@ const K_TOURISM = 'tf_tourism';
 const K_AUDIT = 'tf_audit_logs';
 const K_DRIVER_LEDGER = 'tf_driver_ledger';
 
+// --- LOW LEVEL STORAGE ADAPTER ---
+// [BACKEND-MIGRATION]: This section emulates the DB Client.
 const get = <T>(key: string, defaultVal: T): T => {
   const s = localStorage.getItem(key);
   if (!s) return defaultVal;
   try { return JSON.parse(s); } catch { return defaultVal; }
 };
 
-// Safe Set with Quota Management
 const set = <T>(key: string, val: T) => {
     try {
         localStorage.setItem(key, JSON.stringify(val));
     } catch (e: any) {
         if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
-            alert("ERRO CRÍTICO: Espaço de armazenamento cheio! O sistema não consegue salvar novos dados.\n\nSOLUÇÃO: Vá em 'Cadastros > Dados & Backup', baixe o backup e depois clique em 'Limpar Dados Antigos' ou contate o suporte.");
+            alert("ERRO CRÍTICO: Espaço de armazenamento cheio!");
             throw new Error("Armazenamento Cheio");
         }
         console.error("Storage Error", e);
     }
 };
 
-// --- UUID GENERATOR ---
 const generateId = () => {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
         return crypto.randomUUID();
@@ -52,23 +52,18 @@ const generateId = () => {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
 };
 
-// --- DATE HELPER (Timezone Fix) ---
 export const getLocalDate = () => {
   const now = new Date();
   const offset = now.getTimezoneOffset() * 60000;
   return new Date(now.getTime() - offset).toISOString().split('T')[0];
 };
 
-// --- DISPLAY DATE HELPER (Prevent Timezone Shift) ---
 export const formatDateDisplay = (isoDate: string) => {
   if (!isoDate) return '-';
   const [year, month, day] = isoDate.split('-');
   return `${day}/${month}/${year}`;
 };
 
-// --- FINANCIAL PRECISION HELPER (CRITICAL FOR PRODUCTION) ---
-// JavaScript floating point math is dangerous for finance (0.1 + 0.2 !== 0.3).
-// This helper fixes precision to 2 decimals safely.
 export const money = (value: number | undefined | null): number => {
     if (!value) return 0;
     return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -98,16 +93,14 @@ export const createAuditLog = (
             details = 'Criou novo registro';
         } else {
             action = 'UPDATE';
-            // Simple diff detection for description
             const changes = [];
             for (const key in item) {
-                if (item[key] !== previousItem[key] && key !== 'id') {
+                if (item[key] !== previousItem[key] && key !== 'id' && key !== 'updatedAt') {
                     changes.push(key);
                 }
             }
             details = changes.length > 0 ? `Alterou: ${changes.join(', ')}` : 'Atualizou registro';
             
-            // Detect Status Change specific Logic
             if (previousItem.status === 'OPEN' && item.status === 'CLOSED') {
                 action = 'CLOSE';
                 details = 'Fechou conferência/caixa';
@@ -136,16 +129,96 @@ export const createAuditLog = (
         previousSnapshot: previousItem ? JSON.stringify(previousItem) : undefined
     };
 
-    // Auto-Truncate Logs to prevent Quota issues (Safety Valve)
-    if (logs.length > 1500) {
-        logs.splice(0, 500);
-    } 
-    
+    if (logs.length > 1500) logs.splice(0, 500);
     logs.push(log);
     set(K_AUDIT, logs);
 };
 
-// --- AUDIT HELPER: LOCK CHECK ---
+// --- USER REPOSITORY (BACKEND READY ARCHITECTURE) ---
+// This object encapsulates all User logic. 
+// When migrating to Firebase/Supabase, ONLY THIS OBJECT needs to be rewritten.
+
+export const UserRepository = {
+    // [BACKEND-MIGRATION]: Replace with `await supabase.from('users').select('*')`
+    getAll: (): User[] => {
+        return get<User[]>(K_USERS, []);
+    },
+
+    // [BACKEND-MIGRATION]: Replace with `await supabase.from('users').select('*').eq('id', id)`
+    getById: (id: string): User | undefined => {
+        const users = get<User[]>(K_USERS, []);
+        return users.find(u => u.id === id);
+    },
+
+    // [BACKEND-MIGRATION]: Replace with `await supabase.from('users').select('*').eq('email', email)`
+    getByEmail: (email: string): User | undefined => {
+        const users = get<User[]>(K_USERS, []);
+        return users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    },
+
+    // [BACKEND-MIGRATION]: Replace with `await supabase.from('users').upsert(user)`
+    save: (user: Partial<User>): User => {
+        const users = get<User[]>(K_USERS, []);
+        const existingIndex = users.findIndex(u => u.id === user.id);
+        const now = new Date().toISOString();
+
+        let savedUser: User;
+
+        if (existingIndex >= 0) {
+            // Update
+            const prev = users[existingIndex];
+            savedUser = {
+                ...prev,
+                ...user,
+                updatedAt: now,
+                // Ensure critical fields aren't lost if not passed
+                createdAt: prev.createdAt,
+                password: user.password || prev.password
+            } as User;
+            users[existingIndex] = savedUser;
+            createAuditLog('User', savedUser, prev, 'UPDATE');
+        } else {
+            // Insert
+            savedUser = {
+                ...user,
+                id: user.id || generateId(),
+                active: user.active ?? true,
+                createdAt: now,
+                updatedAt: now
+            } as User;
+            users.push(savedUser);
+            createAuditLog('User', savedUser, null, 'CREATE');
+        }
+
+        set(K_USERS, users);
+        return savedUser;
+    },
+
+    // [BACKEND-MIGRATION]: Replace with Auth Provider logic (Firebase Auth / Supabase Auth)
+    // This handles the "Login" logic locally.
+    authenticate: (email: string, password: string): User | null => {
+        const users = get<User[]>(K_USERS, []);
+        const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.active);
+        
+        // [SECURITY WARNING]: Simple comparison. In backend, use bcrypt.compare(password, user.passwordHash)
+        if (user && user.password === password) {
+            // Update Last Login
+            const updatedUser = { ...user, lastLogin: new Date().toISOString() };
+            // Persist the last login update without triggering a heavy audit log if preferred
+            const idx = users.findIndex(u => u.id === user.id);
+            if (idx >= 0) {
+                users[idx] = updatedUser;
+                set(K_USERS, users);
+            }
+            return updatedUser;
+        }
+        return null;
+    }
+};
+
+
+// --- LEGACY STORAGE (To be refactored in Phase 2) ---
+
 const checkLock = (date: string) => {
   const closes = get<DailyClose[]>(K_DAILY_CLOSES, []);
   const isClosed = closes.some(c => c.date === date);
@@ -155,6 +228,9 @@ const checkLock = (date: string) => {
 };
 
 export const storage = {
+  // Expose User Repo
+  users: UserRepository,
+
   init: () => {
     if (!localStorage.getItem(K_DRIVERS)) set(K_DRIVERS, MOCK_DRIVERS);
     if (!localStorage.getItem(K_VEHICLES)) set(K_VEHICLES, MOCK_VEHICLES);
@@ -166,18 +242,16 @@ export const storage = {
     if (!localStorage.getItem(K_EXPENSE_TYPES)) set(K_EXPENSE_TYPES, MOCK_EXPENSE_TYPES);
     if (!localStorage.getItem(K_COMMISSIONS)) set(K_COMMISSIONS, MOCK_COMMISSIONS);
     
-    // Default Admin User Initialization (Vital for new Auth system)
-    const users = get<User[]>(K_USERS, []);
-    if (users.length === 0) {
-        set(K_USERS, [{
-            id: 'admin-001',
+    // Initialize Default Admin via Repo
+    const existingUsers = UserRepository.getAll();
+    if (existingUsers.length === 0) {
+        UserRepository.save({
             name: 'Administrador Principal',
             email: 'admin@onnibox.com',
-            password: 'admin', // Simple default for first access
+            password: 'admin',
             role: 'ADMIN',
-            active: true,
-            createdAt: new Date().toISOString()
-        }]);
+            active: true
+        });
     }
   },
 
@@ -199,38 +273,14 @@ export const storage = {
   getTourismServices: () => get<TourismService[]>(K_TOURISM, []),
   getAuditLogs: () => get<AuditLog[]>(K_AUDIT, []).sort((a,b) => b.timestamp.localeCompare(a.timestamp)),
   getDriverLedger: () => get<DriverLedgerEntry[]>(K_DRIVER_LEDGER, []),
-  getUsers: () => get<User[]>(K_USERS, []),
+  
+  // Backwards compatibility for User Page until fully refactored UI
+  getUsers: () => UserRepository.getAll(),
+  saveUser: (u: User) => UserRepository.save(u),
   
   isDayClosed: (date: string) => {
     const list = get<DailyClose[]>(K_DAILY_CLOSES, []);
     return list.some(c => c.date === date);
-  },
-
-  // --- USER MANAGEMENT ---
-  saveUser: (item: User) => {
-      const list = get<User[]>(K_USERS, []);
-      const idx = list.findIndex(i => i.id === item.id);
-      const prev = idx >= 0 ? list[idx] : null;
-      
-      const newItem = { ...item, id: item.id || generateId() };
-      
-      if (idx >= 0) list[idx] = newItem; else list.push(newItem);
-      set(K_USERS, list);
-      createAuditLog('User', newItem, prev);
-  },
-  
-  deleteUser: (id: string) => {
-      const list = get<User[]>(K_USERS, []);
-      const idx = list.findIndex(i => i.id === id);
-      if (idx >= 0) {
-          const prev = { ...list[idx] };
-          // Logic: Soft delete or Hard delete? 
-          // For users, it's better to deactivate to keep history linkage.
-          // But if requested "delete", we will deactivate.
-          list[idx].active = false; 
-          set(K_USERS, list);
-          createAuditLog('User', list[idx], prev, 'UPDATE'); // Log as update (deactivation)
-      }
   },
 
   // --- REGISTRIES ---

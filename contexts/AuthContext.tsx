@@ -26,12 +26,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = (email: string, pass: string) => {
     // Force init to ensure admin exists
     storage.init();
-    const users = storage.getUsers();
     
-    // Find user
-    const found = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.active);
+    // [BACKEND-MIGRATION] Use the Repository which wraps the Auth Logic
+    const found = storage.users.authenticate(email, pass);
     
-    if (found && found.password === pass) {
+    if (found) {
         // Build Session Profile
         const profile: UserProfile = { 
             id: found.id,
@@ -46,9 +45,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         // Audit
         createAuditLog('User', { id: found.id }, null, 'LOGIN');
-        
-        // Update Last Login (Optional enhancement)
-        // storage.saveUser({ ...found, lastLogin: new Date().toISOString() }); 
         
         return true;
     }

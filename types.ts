@@ -1,14 +1,32 @@
 
 export type UserRole = 'ADMIN' | 'MANAGER' | 'FINANCIAL' | 'OPERATOR' | 'AUDITOR';
 
+/**
+ * [DATABASE SCHEMA DOCUMENTATION]
+ * Table: users
+ * ---------------------------------------------------------
+ * | Column      | Type         | Constraints              |
+ * |-------------|--------------|--------------------------|
+ * | id          | UUID/String  | PK, Not Null             |
+ * | name        | VarChar(100) | Not Null                 |
+ * | email       | VarChar(150) | Unique, Index, Not Null  |
+ * | password    | VarChar(255) | Not Null (Hashed)        |
+ * | role        | Enum         | Default 'OPERATOR'       |
+ * | active      | Boolean      | Default true             |
+ * | created_at  | Timestamp    | Default now()            |
+ * | updated_at  | Timestamp    | On Update now()          |
+ * | last_login  | Timestamp    | Nullable                 |
+ * ---------------------------------------------------------
+ */
 export interface User {
   id: string;
   name: string;
   email: string;
-  password?: string; // In production, this should be hashed. Here stored for simulation.
+  password?: string; // [SECURITY WARNING] In frontend-only, this is plain text. In Backend, never return this field.
   role: UserRole;
   active: boolean;
   createdAt: string;
+  updatedAt: string;
   lastLogin?: string;
 }
 
