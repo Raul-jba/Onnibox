@@ -7,17 +7,17 @@
     <title>OnniBox - Controle Financeiro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
       
       :root {
-        font-size: 16px; 
+        font-size: 16px; /* Updated to 16px */
       }
 
       body {
         font-family: 'Inter', sans-serif;
-        background-color: #f8fafc; /* Slate-50 */
-        color: #0f172a; /* Slate-900 */
-        line-height: 1.6;
+        background-color: #f3f4f6; /* Gray-100 */
+        color: #1e293b; /* Slate-800 */
+        line-height: 1.5;
       }
       
       /* --- STANDARD INPUTS --- */
@@ -26,41 +26,19 @@
         outline: none;
       }
       
-      /* Standard Date Picker Icon (Dark Gray) */
-      input[type="date"]::-webkit-calendar-picker-indicator {
-        cursor: pointer;
-        opacity: 0.6;
-        transition: 0.2s;
+      /* Custom Scrollbar for Sidebar */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
       }
-      input[type="date"]:hover::-webkit-calendar-picker-indicator {
-        opacity: 1;
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
       }
-
-      /* --- DARK THEME INPUTS (Dashboard/Headers) --- */
-      .input-dark {
-        color-scheme: dark; 
-      }
-      .input-dark::-webkit-calendar-picker-indicator {
-        filter: invert(1);
-        opacity: 0.8;
-      }
-      .input-dark:hover::-webkit-calendar-picker-indicator {
-        opacity: 1;
-      }
-
-      /* Custom Scrollbar */
-      ::-webkit-scrollbar {
-        width: 10px;
-        height: 10px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #f1f5f9;
-      }
-      ::-webkit-scrollbar-thumb {
+      .custom-scrollbar::-webkit-scrollbar-thumb {
         background: #cbd5e1;
-        border-radius: 5px;
+        border-radius: 3px;
       }
-      ::-webkit-scrollbar-thumb:hover {
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
         background: #94a3b8;
       }
     </style>

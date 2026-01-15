@@ -1,25 +1,33 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Card } from '../components/Layout';
+import { Card, Button } from '../components/Layout';
 import { storage, getLocalDate, formatDateDisplay } from '../services/storageService';
 import { TourismService, Driver, Vehicle, ExpenseType, Client } from '../types';
 import { GenericTableManager, Column } from '../components/GenericTableManager';
-import { MapPinned, Users, CheckCircle, Calendar, DollarSign, AlertCircle, Calculator, PlusCircle } from 'lucide-react';
+import { 
+  MapPinned, Users, CheckCircle, Calendar, DollarSign, AlertCircle, Calculator, 
+  PlusCircle, Printer, ThumbsUp, ThumbsDown, XCircle, User, Bus 
+} from 'lucide-react';
 import { CashExpensesManager } from '../components/CashExpensesManager';
+import { usePermission } from '../hooks/usePermission';
 
 const formatMoney = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
 // Standard Input Classes
-const INPUT_CLASS = "w-full bg-slate-50 border border-slate-300 text-slate-800 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 font-semibold shadow-sm";
+const INPUT_CLASS = "w-full bg-white border border-slate-300 text-slate-800 text-sm rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 block p-2.5 font-semibold shadow-sm";
 const LABEL_CLASS = "block mb-1 text-xs font-bold text-slate-500 uppercase";
 
 export const TourismPage: React.FC = () => {
+  const { can } = usePermission();
   const [entries, setEntries] = useState<TourismService[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [expenseTypes, setExpenseTypes] = useState<ExpenseType[]>([]);
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [printData, setPrintData] = useState<TourismService | null>(null);
   
   const [filters, setFilters] = useState({
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
@@ -48,16 +56,28 @@ export const TourismPage: React.FC = () => {
   // --- AUTO CALCULATION LOGIC ---
   useEffect(() => {
     if (isModalOpen && formData.pricingType === 'CALCULATED') {
-        const kmCost = (formData.totalKm || 0) * (formData.pricePerKm || 0);
-        const dailyCost = (formData.days || 0) * (formData.dailyRate || 0);
-        const total = kmCost + dailyCost;
+        const priceKm = Number(formData.pricePerKm) || 0;
+        const dist = Number(formData.totalKm) || 0;
+        const rate = Number(formData.dailyRate) || 0;
+        const daysCount = Number(formData.days) || 0;
+
+        const kmCost = dist * priceKm;
+        const dailyCost = daysCount * rate;
         
-        // Only update if value is different to avoid loops, though strict mode might trigger twice
+        const total = Number((kmCost + dailyCost).toFixed(2));
+        
         if (formData.contractValue !== total) {
             setFormData(prev => ({ ...prev, contractValue: total }));
         }
     }
-  }, [formData.pricingType, formData.totalKm, formData.pricePerKm, formData.days, formData.dailyRate, isModalOpen]);
+  }, [
+      formData.pricingType, 
+      formData.totalKm, 
+      formData.pricePerKm, 
+      formData.days, 
+      formData.dailyRate, 
+      isModalOpen
+  ]);
 
   const filteredEntries = useMemo(() => {
     return entries.filter(e => {
@@ -79,23 +99,19 @@ export const TourismPage: React.FC = () => {
   }, [filteredEntries]);
 
   const handleSave = () => {
-    // Basic validation: Must have a name manually typed OR a selected client
-    if (!formData.contractorName && !formData.clientId) return alert("Selecione um Cliente ou digite o nome do Contratante.");
+    if (!formData.contractorName) return alert("O nome do Contratante é obrigatório (Selecione um cliente ou digite manualmente).");
     if (!formData.destination) return alert("Preencha o Destino.");
     if (!formData.departureDate || !formData.returnDate) return alert("Datas obrigatórias.");
     
-    // Ensure contractorName matches selected client if clientId is present (for consistency)
-    let finalContractorName = formData.contractorName;
-    if (formData.clientId) {
-        const client = clients.find(c => c.id === formData.clientId);
-        if (client) finalContractorName = client.name;
-    }
+    // Auto-set receivedValue if not set and status is COMPLETED (Assuming cash in hand for legacy behavior)
+    // Actually, better to let user define. If undefined, we can default to 0 in new records, but keep legacy logic in reports.
+    // For now, save as is.
 
     storage.saveTourismService({
         ...formData,
         id: formData.id || Date.now().toString(),
         contractValue: Number(formData.contractValue || 0),
-        contractorName: finalContractorName || 'Desconhecido',
+        receivedValue: formData.receivedValue !== undefined ? Number(formData.receivedValue) : undefined,
         status: formData.status || 'QUOTE'
     } as TourismService);
     
@@ -103,40 +119,88 @@ export const TourismPage: React.FC = () => {
     setEntries(storage.getTourismServices());
   };
 
+  const handleChangeStatus = (item: TourismService, newStatus: TourismService['status']) => {
+      if(!confirm(`Deseja alterar o status para ${newStatus === 'CONFIRMED' ? 'ACEITO/CONFIRMADO' : 'RECUSADO'}?`)) return;
+      storage.saveTourismService({ ...item, status: newStatus });
+      setEntries(storage.getTourismServices());
+  };
+
+  const handlePrintQuote = (item: TourismService) => {
+    setPrintData(item);
+    setIsPrintModalOpen(true);
+  };
+
   const getStatusLabel = (status: string) => {
       const map: Record<string, any> = {
-          'QUOTE': { label: 'Orçamento', class: 'bg-slate-200 text-slate-700' },
-          'CONFIRMED': { label: 'Confirmado', class: 'bg-blue-100 text-blue-700' },
-          'COMPLETED': { label: 'Realizado', class: 'bg-green-100 text-green-700' },
-          'CANCELED': { label: 'Cancelado', class: 'bg-red-100 text-red-700' }
+          'QUOTE': { label: 'Orç.', class: 'bg-slate-200 text-slate-700' },
+          'CONFIRMED': { label: 'Conf.', class: 'bg-blue-100 text-blue-700' },
+          'COMPLETED': { label: 'OK', class: 'bg-green-100 text-green-700' },
+          'CANCELED': { label: 'Canc.', class: 'bg-red-100 text-red-700' },
+          'REJECTED': { label: 'Rec.', class: 'bg-slate-300 text-slate-600 line-through' }
       };
       const s = map[status] || map['QUOTE'];
-      return <span className={`px-2 py-1 rounded text-xs font-bold ${s.class}`}>{s.label}</span>;
+      return <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border border-transparent ${s.class}`}>{s.label}</span>;
   };
 
   const columns: Column<TourismService>[] = [
-    { header: "Data Saída", render: (i) => formatDateDisplay(i.departureDate) },
-    { header: "Contratante", render: (i) => <div><div className="font-bold">{i.contractorName}</div><div className="text-xs text-slate-500">{i.destination}</div></div> },
-    { header: "Motorista/Veículo", render: (i) => {
-        const drv = drivers.find(d => d.id === i.driverId)?.name || '-';
-        const veh = vehicles.find(v => v.id === i.vehicleId)?.plate || '-';
-        return <div className="text-sm"><div>{drv}</div><div className="text-slate-500 text-xs">{veh}</div></div>;
-    }},
-    { header: "Tipo", render: (i) => i.pricingType === 'CALCULATED' ? <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">VIAGEM</span> : <span className="text-[10px] font-bold bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded">URBANO</span>, align: 'center'},
-    { header: "Valor", render: (i) => formatMoney(i.contractValue), align: 'right' },
-    { header: "Despesas", render: (i) => {
-        const total = (i.expenses || []).reduce((a,b) => a + b.amount, 0);
-        return <span className="text-red-600">-{formatMoney(total)}</span>;
-    }, align: 'right' },
-    { header: "Lucro", render: (i) => {
-        const totalExp = (i.expenses || []).reduce((a,b) => a + b.amount, 0);
-        const profit = i.contractValue - totalExp;
-        return <span className={`font-bold ${profit > 0 ? 'text-green-700' : 'text-slate-500'}`}>{formatMoney(profit)}</span>;
-    }, align: 'right' },
-    { header: "Status", render: (i) => getStatusLabel(i.status), align: 'center' },
+    { 
+        header: "Data / Status", 
+        render: (i) => (
+            <div className="flex flex-col gap-1 items-start w-24">
+                <span className="font-bold text-slate-800 text-sm leading-none">{formatDateDisplay(i.departureDate).substring(0,5)}</span>
+                <span className="text-[10px] text-slate-500">{formatDateDisplay(i.departureDate).substring(6)}</span>
+                {getStatusLabel(i.status)}
+            </div>
+        ),
+        align: 'center'
+    },
+    { 
+        header: "Viagem & Cliente", 
+        render: (i) => (
+            <div className="max-w-[180px] lg:max-w-[250px]">
+                <div className="font-bold text-slate-800 text-sm leading-tight truncate" title={i.destination}>
+                    {i.destination}
+                </div>
+                <div className="text-xs text-slate-500 truncate flex items-center gap-1 mt-0.5" title={i.contractorName}>
+                    {i.clientId ? <User size={10} className="text-blue-500 shrink-0"/> : <User size={10} className="text-slate-300 shrink-0"/>}
+                    {i.contractorName}
+                </div>
+                <div className="mt-1">
+                    {i.pricingType === 'CALCULATED' ? 
+                        <span className="text-[9px] font-bold bg-indigo-50 text-indigo-700 px-1 py-0.5 rounded border border-indigo-100">VIAGEM</span> : 
+                        <span className="text-[9px] font-bold bg-slate-50 text-slate-500 px-1 py-0.5 rounded border border-slate-200">URBANO</span>
+                    }
+                </div>
+            </div> 
+        )
+    },
+    { 
+        header: "Financeiro", 
+        render: (i) => {
+            const totalExp = (i.expenses || []).reduce((a,b) => a + b.amount, 0);
+            const received = i.receivedValue !== undefined ? i.receivedValue : (i.status === 'COMPLETED' ? i.contractValue : 0);
+            const pending = i.contractValue - received;
+            
+            return (
+                <div className="text-right">
+                    <div className="font-extrabold text-blue-700 text-sm">{formatMoney(i.contractValue)}</div>
+                    
+                    {pending > 0 && i.status === 'CONFIRMED' && (
+                        <div className="text-[10px] text-red-500 font-bold">Falta: {formatMoney(pending)}</div>
+                    )}
+                    
+                    {received > 0 && (
+                        <div className="text-[10px] text-green-600 font-bold">Recebido: {formatMoney(received)}</div>
+                    )}
+                </div>
+            );
+        }, 
+        align: 'right' 
+    },
   ];
 
   return (
+    <>
     <GenericTableManager<TourismService>
       title="Turismo & Fretamento"
       subtitle="Gestão de excursões e viagens contratadas"
@@ -144,7 +208,41 @@ export const TourismPage: React.FC = () => {
       columns={columns}
       onNew={() => { setFormData({ departureDate: getLocalDate(), returnDate: getLocalDate(), expenses: [], status: 'QUOTE', pricingType: 'FIXED', days: 1, clientId: '' }); setIsModalOpen(true); }}
       onEdit={(i) => { setFormData(JSON.parse(JSON.stringify(i))); setIsModalOpen(true); }}
-      onDelete={(i) => { if(confirm("Excluir serviço?")) { storage.deleteTourismService(i.id); setEntries(storage.getTourismServices()); } }}
+      onDelete={can('delete_records') ? (i) => { if(confirm("Excluir serviço?")) { storage.deleteTourismService(i.id); setEntries(storage.getTourismServices()); } } : undefined}
+      
+      renderRowActions={(i) => (
+          <>
+            {i.status === 'QUOTE' && can('approve_tourism') && (
+                <>
+                    <button 
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleChangeStatus(i, 'CONFIRMED'); }} 
+                        className="text-white bg-green-600 hover:bg-green-700 p-2.5 rounded-lg shadow-sm transition-colors" 
+                        title="Aprovar (Confirmar)"
+                    >
+                        <ThumbsUp size={20} />
+                    </button>
+                    <button 
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleChangeStatus(i, 'REJECTED'); }} 
+                        className="text-white bg-red-600 hover:bg-red-700 p-2.5 rounded-lg shadow-sm transition-colors" 
+                        title="Recusar"
+                    >
+                        <ThumbsDown size={20} />
+                    </button>
+                </>
+            )}
+            <button 
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handlePrintQuote(i); }} 
+                className="text-white bg-slate-600 hover:bg-slate-700 p-2.5 rounded-lg shadow-sm transition-colors" 
+                title="Imprimir Orçamento"
+            >
+                <Printer size={20} />
+            </button>
+          </>
+      )}
+
       isModalOpen={isModalOpen}
       onCloseModal={() => setIsModalOpen(false)}
       onSave={handleSave}
@@ -167,6 +265,7 @@ export const TourismPage: React.FC = () => {
                  <option value="CONFIRMED">Confirmado</option>
                  <option value="COMPLETED">Realizado</option>
                  <option value="CANCELED">Cancelado</option>
+                 <option value="REJECTED">Recusado</option>
              </select>
            </div>
         </>
@@ -174,39 +273,47 @@ export const TourismPage: React.FC = () => {
       renderForm={() => (
         <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4 border-b border-slate-100">
-                <div className="md:col-span-2">
-                    <label className={LABEL_CLASS}>Cliente / Contratante</label>
-                    <div className="flex gap-2">
-                        <select 
-                            className={INPUT_CLASS} 
-                            value={formData.clientId || ''} 
-                            onChange={e => {
-                                const selectedClient = clients.find(c => c.id === e.target.value);
-                                setFormData({
-                                    ...formData, 
-                                    clientId: e.target.value,
-                                    contractorName: selectedClient ? selectedClient.name : ''
-                                });
-                            }}
-                        >
-                            <option value="">Selecione um Cliente Cadastrado...</option>
-                            {clients.filter(c => c.active).map(c => (
-                                <option key={c.id} value={c.id}>{c.name} {c.tradeName ? `(${c.tradeName})` : ''}</option>
-                            ))}
-                        </select>
-                        <a href="#/registries" title="Cadastrar Novo Cliente" className="bg-slate-200 text-slate-600 p-2.5 rounded-lg hover:bg-slate-300 transition-colors flex items-center justify-center">
-                            <PlusCircle size={20}/>
-                        </a>
+                <div className="md:col-span-2 bg-blue-50 p-4 rounded-lg border border-blue-100">
+                    <label className={LABEL_CLASS}>Identificação do Contratante</label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                             <span className="text-[10px] text-slate-500 block mb-1">Selecionar Cadastro (Preenchimento Automático)</span>
+                             <div className="flex gap-2">
+                                <select 
+                                    className={INPUT_CLASS} 
+                                    value={formData.clientId || ''} 
+                                    onChange={e => {
+                                        const selectedClient = clients.find(c => c.id === e.target.value);
+                                        setFormData({
+                                            ...formData, 
+                                            clientId: e.target.value,
+                                            contractorName: selectedClient ? selectedClient.name : (formData.contractorName || '')
+                                        });
+                                    }}
+                                >
+                                    <option value="">-- Cliente Avulso / Manual --</option>
+                                    {clients.filter(c => c.active).map(c => (
+                                        <option key={c.id} value={c.id}>{c.name} {c.type === 'PJ' ? `(${c.tradeName})` : ''}</option>
+                                    ))}
+                                </select>
+                                <a href="#/registries" title="Cadastrar Novo Cliente" className="bg-white border border-slate-300 text-slate-600 p-2.5 rounded-lg hover:bg-slate-100 transition-colors flex items-center justify-center">
+                                    <PlusCircle size={20}/>
+                                </a>
+                            </div>
+                        </div>
+                        <div>
+                             <span className="text-[10px] text-slate-500 block mb-1">Nome no Contrato (Salvo no Orçamento)</span>
+                             <div className="relative">
+                                <User className="absolute left-3 top-2.5 text-slate-400" size={18}/>
+                                <input 
+                                    className={`${INPUT_CLASS} pl-10`}
+                                    value={formData.contractorName || ''} 
+                                    onChange={e => setFormData({...formData, contractorName: e.target.value})} 
+                                    placeholder="Nome do Cliente" 
+                                />
+                             </div>
+                        </div>
                     </div>
-                    {/* Fallback for manual entry if no client selected (or legacy data) */}
-                    {!formData.clientId && (
-                        <input 
-                            className={`${INPUT_CLASS} mt-2 bg-yellow-50 border-yellow-200 text-yellow-800 placeholder-yellow-400`} 
-                            value={formData.contractorName || ''} 
-                            onChange={e => setFormData({...formData, contractorName: e.target.value})} 
-                            placeholder="Ou digite o nome manualmente (Não recomendado)" 
-                        />
-                    )}
                 </div>
                 
                 <div className="md:col-span-2"><label className={LABEL_CLASS}>Destino / Itinerário</label><input className={INPUT_CLASS} value={formData.destination || ''} onChange={e => setFormData({...formData, destination: e.target.value})} placeholder="Ex: Aparecida do Norte - SP" /></div>
@@ -224,6 +331,7 @@ export const TourismPage: React.FC = () => {
                         <option value="CONFIRMED">Confirmado</option>
                         <option value="COMPLETED">Realizado</option>
                         <option value="CANCELED">Cancelado</option>
+                        <option value="REJECTED">Recusado</option>
                     </select>
                 </div>
             </div>
@@ -287,6 +395,22 @@ export const TourismPage: React.FC = () => {
                             />
                         </div>
                     </div>
+
+                    {/* NEW RECEIVED VALUE FIELD */}
+                    <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                        <label className="block text-sm font-bold text-green-800 mb-1 uppercase">Valor Recebido (Sinal/Total)</label>
+                        <input 
+                            type="number" 
+                            step="0.01" 
+                            className="w-full border border-green-400 focus:border-green-600 focus:ring-green-200 bg-white p-3 rounded-lg font-black text-2xl text-green-700 shadow-inner"
+                            value={formData.receivedValue || ''} 
+                            onChange={e => setFormData({...formData, receivedValue: Number(e.target.value)})}
+                            placeholder="0.00"
+                        />
+                        <div className="mt-2 text-xs font-bold text-green-700">
+                            Falta Receber: {formatMoney((formData.contractValue || 0) - (formData.receivedValue || 0))}
+                        </div>
+                    </div>
                     
                     <div className="bg-slate-50 p-4 rounded-lg text-sm space-y-2 border border-slate-200">
                         <div className="flex justify-between text-slate-700 font-medium">
@@ -297,8 +421,8 @@ export const TourismPage: React.FC = () => {
                             <span>(-) Despesas</span>
                             <span>{formatMoney((formData.expenses || []).reduce((a,b)=>a+b.amount,0))}</span>
                         </div>
-                        <div className="flex justify-between font-extrabold border-t pt-2 text-green-800 text-lg">
-                            <span>(=) Resultado</span>
+                        <div className="flex justify-between font-extrabold border-t pt-2 text-slate-800 text-lg">
+                            <span>(=) Resultado (Lucro)</span>
                             <span>{formatMoney((formData.contractValue || 0) - (formData.expenses || []).reduce((a,b)=>a+b.amount,0))}</span>
                         </div>
                     </div>
@@ -318,5 +442,6 @@ export const TourismPage: React.FC = () => {
         </div>
       )}
     />
+    </>
   );
 };

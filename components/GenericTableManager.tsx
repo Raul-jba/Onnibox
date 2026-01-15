@@ -1,7 +1,7 @@
 
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useState, useEffect } from 'react';
 import { Card, Button } from './Layout';
-import { Plus, Search, X, Edit2, Trash2, Power } from 'lucide-react';
+import { Plus, Search, X, Edit2, Trash2, Power, Loader2 } from 'lucide-react';
 
 export interface Column<T> {
   header: string;
@@ -33,7 +33,7 @@ interface GenericTableManagerProps<T> {
   // Modal / Form
   isModalOpen?: boolean;
   onCloseModal?: () => void;
-  onSave?: () => void;
+  onSave?: () => void | Promise<void>;
   modalTitle?: string;
   renderForm?: () => ReactNode;
   saveLabel?: string;
@@ -71,6 +71,28 @@ export function GenericTableManager<T extends { id: string }>({
 }: GenericTableManagerProps<T>) {
   
   const [searchTerm, setSearchTerm] = React.useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Reset saving state when modal closes/opens
+  useEffect(() => {
+      if (isModalOpen) setIsSaving(false);
+  }, [isModalOpen]);
+
+  // Wrapper for Save to prevent double clicks
+  const handleSaveWrapper = async () => {
+      if (!onSave || isSaving) return;
+      setIsSaving(true);
+      try {
+        await onSave();
+        // Note: We don't set setIsSaving(false) here because typically onSave closes the modal.
+        // If the modal doesn't close, the parent component should handle state or errors.
+        // But to be safe in case of validation error keeping modal open:
+        setTimeout(() => setIsSaving(false), 500); 
+      } catch (e) {
+        setIsSaving(false);
+        alert("Erro ao salvar: " + e);
+      }
+  };
 
   // Filter items by search term if provided
   const filteredItems = React.useMemo(() => {
@@ -173,7 +195,7 @@ export function GenericTableManager<T extends { id: string }>({
 
                   {/* Actions */}
                   {hasActions && (
-                    <td className="px-6 py-5 text-center">
+                    <td className="px-6 py-5 text-center whitespace-nowrap">
                         <div className="flex justify-center gap-3">
                             {renderRowActions && renderRowActions(item)}
                             
@@ -212,7 +234,7 @@ export function GenericTableManager<T extends { id: string }>({
                 <h3 className="font-extrabold text-2xl text-slate-900 flex items-center gap-3">
                   {modalTitle || `Novo ${title}`}
                 </h3>
-                <button onClick={onCloseModal} className="text-slate-500 hover:text-slate-800 bg-white p-2 rounded-full border-2 border-slate-300">
+                <button onClick={onCloseModal} className="text-slate-500 hover:text-slate-800 bg-white p-2 rounded-full border-2 border-slate-300" disabled={isSaving}>
                     <span className="font-bold text-xl px-1">✕</span>
                 </button>
              </div>
@@ -221,8 +243,14 @@ export function GenericTableManager<T extends { id: string }>({
                 {renderForm()}
 
                 <div className="flex justify-end gap-4 pt-6 mt-6 border-t-2 border-slate-200">
-                    <Button variant="secondary" onClick={onCloseModal} className="text-lg px-8">{cancelLabel}</Button>
-                    {onSave && <Button onClick={onSave} className="text-lg px-8">{saveLabel}</Button>}
+                    <Button variant="secondary" onClick={onCloseModal} className="text-lg px-8" disabled={isSaving}>
+                        {cancelLabel}
+                    </Button>
+                    {onSave && (
+                        <Button onClick={handleSaveWrapper} className="text-lg px-8 min-w-[140px]" disabled={isSaving}>
+                            {isSaving ? <><Loader2 className="animate-spin" size={20}/> Salvando...</> : saveLabel}
+                        </Button>
+                    )}
                 </div>
              </div>
           </Card>

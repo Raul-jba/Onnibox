@@ -10,13 +10,15 @@ interface CashExpensesManagerProps {
   onChange: (expenses: Expense[]) => void;
   expenseTypes: ExpenseType[];
   className?: string;
+  readOnly?: boolean;
 }
 
 export const CashExpensesManager: React.FC<CashExpensesManagerProps> = ({ 
   expenses, 
   onChange, 
   expenseTypes,
-  className = ''
+  className = '',
+  readOnly = false
 }) => {
   const [tempType, setTempType] = useState('');
   const [tempAmount, setTempAmount] = useState('');
@@ -49,38 +51,40 @@ export const CashExpensesManager: React.FC<CashExpensesManagerProps> = ({
         Saídas (Dinheiro)
       </h4>
       
-      {/* Input Area */}
-      <div className="flex gap-2 items-end">
-        <div className="flex-1">
-             <label className="block text-xs font-bold text-slate-500 mb-1">Tipo de Despesa</label>
-             <select 
-                className="w-full border p-2 rounded text-sm" 
-                value={tempType} 
-                onChange={e => setTempType(e.target.value)}
+      {/* Input Area - Hidden if ReadOnly */}
+      {!readOnly && (
+        <div className="flex gap-2 items-end">
+            <div className="flex-1">
+                <label className="block text-xs font-bold text-slate-500 mb-1">Tipo de Despesa</label>
+                <select 
+                    className="w-full border p-2 rounded text-sm" 
+                    value={tempType} 
+                    onChange={e => setTempType(e.target.value)}
+                >
+                    <option value="">Selecione...</option>
+                    {expenseTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+            </div>
+            <div className="w-24">
+                <label className="block text-xs font-bold text-slate-500 mb-1">Valor</label>
+                <input 
+                    type="number" 
+                    className="w-full border p-2 rounded text-sm" 
+                    placeholder="0.00" 
+                    value={tempAmount} 
+                    onChange={e => setTempAmount(e.target.value)} 
+                />
+            </div>
+            <button 
+                type="button"
+                onClick={handleAdd} 
+                className="bg-slate-800 text-white p-2.5 rounded hover:bg-slate-700 transition-colors mb-[1px]"
+                title="Adicionar Despesa"
             >
-                <option value="">Selecione...</option>
-                {expenseTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
+                <Plus size={18}/>
+            </button>
         </div>
-        <div className="w-24">
-             <label className="block text-xs font-bold text-slate-500 mb-1">Valor</label>
-             <input 
-                type="number" 
-                className="w-full border p-2 rounded text-sm" 
-                placeholder="0.00" 
-                value={tempAmount} 
-                onChange={e => setTempAmount(e.target.value)} 
-            />
-        </div>
-        <button 
-            type="button"
-            onClick={handleAdd} 
-            className="bg-slate-800 text-white p-2.5 rounded hover:bg-slate-700 transition-colors mb-[1px]"
-            title="Adicionar Despesa"
-        >
-            <Plus size={18}/>
-        </button>
-      </div>
+      )}
 
       {/* List */}
       <div className="bg-slate-50 rounded-lg border border-slate-200 overflow-hidden flex flex-col h-40">
@@ -93,13 +97,15 @@ export const CashExpensesManager: React.FC<CashExpensesManagerProps> = ({
                     <span className="font-medium text-slate-700">{expenseTypes.find(t => t.id === ex.typeId)?.name || 'Desconhecido'}</span>
                     <div className="flex items-center gap-3">
                         <span className="font-bold text-red-700">-{formatMoney(ex.amount)}</span>
-                        <button 
-                            type="button"
-                            onClick={() => handleRemove(idx)}
-                            className="text-slate-400 hover:text-red-500 transition-colors"
-                        >
-                            <Trash2 size={14}/>
-                        </button>
+                        {!readOnly && (
+                            <button 
+                                type="button"
+                                onClick={() => handleRemove(idx)}
+                                className="text-slate-400 hover:text-red-500 transition-colors"
+                            >
+                                <Trash2 size={14}/>
+                            </button>
+                        )}
                     </div>
                 </div>
             ))}

@@ -1,665 +1,495 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Card, Button } from '../components/Layout';
-import { storage, formatDateDisplay } from '../services/storageService';
-import { DailyClose, RouteCash, Driver, Line, RouteDef, FuelEntry, Vehicle, TourismService } from '../types';
+import { Card } from '../components/Layout';
+import { storage, formatDateDisplay, money } from '../services/storageService';
+import { DailyClose, RouteCash, AgencyCash, GeneralExpense, FuelEntry, Vehicle, Line, RouteDef, Supplier, ExpenseType, TourismService } from '../types';
 import { 
-  Printer, 
-  Calendar, 
-  Search, 
-  TrendingUp, 
-  Users, 
-  Bus, 
-  Fuel, 
-  DollarSign,
-  Gauge,
-  Activity,
-  Droplets,
-  MapPinned,
-  Briefcase
+  Printer, Calendar, TrendingUp, TrendingDown, 
+  ArrowUpRight, ArrowDownRight, Wallet, Receipt, 
+  Lightbulb, Activity, Truck, AlertTriangle, Target, MapPinned, PieChart as PieChartIcon, CheckCircle2, AlertCircle
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line as RechartsLine } from 'recharts';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area
+} from 'recharts';
 
-// Format Helper
+// --- UTILS ---
 const formatMoney = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
-const formatNumber = (val: number) => new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(val);
+const formatPercent = (val: number) => `${val > 0 ? '+' : ''}${val.toFixed(1)}%`;
 
-const DARK_INPUT_CLASS = "input-dark bg-slate-800 border border-slate-700 rounded-lg p-2 text-white font-bold text-sm focus:ring-2 focus:ring-blue-500 outline-none";
+// --- COMPONENTES AUXILIARES ---
+
+// 1. Card de Insight Inteligente
+const InsightCard = ({ type, title, message, action }: { type: 'success' | 'warning' | 'danger' | 'info', title: string, message: string, action?: string }) => {
+    const styles = {
+        success: 'bg-emerald-50 border-emerald-200 text-emerald-900',
+        warning: 'bg-amber-50 border-amber-200 text-amber-900',
+        danger: 'bg-rose-50 border-rose-200 text-rose-900',
+        info: 'bg-blue-50 border-blue-200 text-blue-900'
+    };
+    const icons = {
+        success: <TrendingUp size={24} className="text-emerald-600"/>,
+        warning: <AlertTriangle size={24} className="text-amber-600"/>,
+        danger: <AlertCircle size={24} className="text-rose-600"/>,
+        info: <Lightbulb size={24} className="text-blue-600"/>
+    };
+
+    return (
+        <div className={`p-5 rounded-xl border shadow-sm flex gap-4 items-start animate-in fade-in slide-in-from-bottom-2 ${styles[type]}`}>
+            <div className="shrink-0 mt-1 bg-white/60 p-2 rounded-full backdrop-blur-sm">{icons[type]}</div>
+            <div className="flex-1">
+                <h4 className="font-bold text-sm uppercase tracking-wide opacity-80 mb-1">{title}</h4>
+                <p className="font-semibold text-base leading-relaxed">{message}</p>
+                {action && (
+                    <div className="mt-3 text-sm font-medium bg-white/50 p-2 rounded-lg border border-white/20 flex items-center gap-2">
+                        <Target size={16} /> 
+                        <span>Sugestão: {action}</span>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+// 2. Card de KPI com Tendência
+const KpiCard = ({ title, value, subtext, icon: Icon, color, comparisonValue }: any) => {
+  let calculatedTrend = 0;
+  if (comparisonValue !== undefined && comparisonValue !== 0) {
+      calculatedTrend = ((value - comparisonValue) / Math.abs(comparisonValue)) * 100;
+  } else if (comparisonValue === 0 && value > 0) {
+      calculatedTrend = 100;
+  }
+
+  const isPositive = calculatedTrend >= 0;
+  const isNeutral = comparisonValue === undefined;
+
+  return (
+    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition-all relative overflow-hidden group">
+      <div className={`absolute -right-6 -top-6 opacity-5 group-hover:opacity-10 transition-opacity rotate-12 ${color === 'green' ? 'text-emerald-600' : color === 'red' ? 'text-rose-600' : 'text-blue-600'}`}>
+          <Icon size={120} />
+      </div>
+      
+      <div className="flex justify-between items-start mb-4 relative z-10">
+        <div className={`p-3 rounded-xl ${color === 'green' ? 'bg-emerald-50 text-emerald-600' : color === 'red' ? 'bg-rose-50 text-rose-600' : color === 'blue' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
+          <Icon size={24} />
+        </div>
+        {!isNeutral && (
+          <span className={`flex items-center text-xs font-bold px-2.5 py-1 rounded-full border ${isPositive ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'}`}>
+            {isPositive ? <ArrowUpRight size={14} className="mr-1"/> : <ArrowDownRight size={14} className="mr-1"/>}
+            {Math.abs(calculatedTrend).toFixed(1)}%
+          </span>
+        )}
+      </div>
+      <div className="relative z-10">
+        <h3 className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">{title}</h3>
+        <div className="text-3xl font-black text-slate-800 tracking-tight">{typeof value === 'number' ? formatMoney(value) : value}</div>
+        {comparisonValue !== undefined && (
+            <p className="text-xs text-slate-400 mt-2 font-medium">
+                Anterior: {formatMoney(comparisonValue)}
+            </p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// --- PÁGINA PRINCIPAL ---
 
 export const ReportsPage: React.FC = () => {
-  // State
-  const [activeTab, setActiveTab] = useState<'financial' | 'lines' | 'drivers' | 'fuel' | 'tourism'>('financial');
-  const [dateRange, setDateRange] = useState({
-    start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-    end: new Date().toISOString().split('T')[0]
-  });
-
-  // Raw Data
-  const [closes, setCloses] = useState<DailyClose[]>([]);
-  const [routes, setRoutes] = useState<RouteCash[]>([]);
-  const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>([]);
-  const [tourismServices, setTourismServices] = useState<TourismService[]>([]);
+  const [activeTab, setActiveTab] = useState<'overview' | 'profitability' | 'operational'>('overview');
   
-  // Aux Data
-  const [lines, setLines] = useState<Line[]>([]);
-  const [routeDefs, setRouteDefs] = useState<RouteDef[]>([]);
-  const [drivers, setDrivers] = useState<Driver[]>([]);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  // Data State - Padrão: Mês Atual
+  const today = new Date();
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+  const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+
+  const [dateRange, setDateRange] = useState({ start: firstDay, end: lastDay });
+
+  // Dados Brutos
+  const [data, setData] = useState<{
+    routes: RouteCash[],
+    agencies: AgencyCash[],
+    generalExpenses: GeneralExpense[],
+    fuel: FuelEntry[],
+    vehicles: Vehicle[],
+    lines: Line[],
+    routeDefs: RouteDef[],
+    tourism: TourismService[],
+  }>({ routes: [], agencies: [], generalExpenses: [], fuel: [], vehicles: [], lines: [], routeDefs: [], tourism: [] });
 
   useEffect(() => {
-    // Load all data
-    setCloses(storage.getDailyCloses());
-    setRoutes(storage.getRouteCash());
-    setFuelEntries(storage.getFuelEntries());
-    setTourismServices(storage.getTourismServices());
-    setLines(storage.getLines());
-    setRouteDefs(storage.getRoutes());
-    setDrivers(storage.getDrivers());
-    setVehicles(storage.getVehicles());
+    setData({
+      routes: storage.getRouteCash(),
+      agencies: storage.getAgencyCash(),
+      generalExpenses: storage.getGeneralExpenses(),
+      fuel: storage.getFuelEntries(),
+      vehicles: storage.getVehicles(),
+      lines: storage.getLines(),
+      routeDefs: storage.getRoutes(),
+      tourism: storage.getTourismServices(),
+    });
   }, []);
 
-  const handlePrint = () => window.print();
+  // --- LÓGICA DE INTELIGÊNCIA ---
 
-  // --- Aggregations ---
-
-  // 1. Financial (Daily Closes within Range)
-  const filteredCloses = useMemo(() => {
-    return closes
-      .filter(c => c.date >= dateRange.start && c.date <= dateRange.end)
-      .sort((a, b) => b.date.localeCompare(a.date));
-  }, [closes, dateRange]);
-
-  const financialTotals = useMemo(() => {
-    return filteredCloses.reduce((acc, curr) => ({
-      rev: acc.rev + (curr.totalRouteRevenue + curr.totalAgencyRevenue),
-      exp: acc.exp + curr.totalExpenses + (curr.totalAgencyExpenses || 0), // Include Agency Expenses
-      comm: acc.comm + (curr.totalCommissions || 0), 
-      net: acc.net + curr.netResult,
-      diff: acc.diff + curr.totalDiff
-    }), { rev: 0, exp: 0, comm: 0, net: 0, diff: 0 });
-  }, [filteredCloses]);
-
-  // 2. Operational by Line
-  const lineStats = useMemo(() => {
-    const relevantRoutes = routes.filter(r => r.date >= dateRange.start && r.date <= dateRange.end);
-    const stats: Record<string, { name: string, trips: number, passengers: number, revenue: number, expenses: number }> = {};
-
-    relevantRoutes.forEach(r => {
-      const def = routeDefs.find(rd => rd.id === r.routeId);
-      const line = lines.find(l => l.id === def?.lineId);
-      const lineName = line?.name || 'Indefinida';
-      const lineId = line?.id || 'unknown';
-
-      if (!stats[lineId]) {
-        stats[lineId] = { name: lineName, trips: 0, passengers: 0, revenue: 0, expenses: 0 };
-      }
+  // 1. Calcular Período Anterior para Comparação
+  const previousPeriod = useMemo(() => {
+      const start = new Date(dateRange.start);
+      const end = new Date(dateRange.end);
+      const diffTime = Math.abs(end.getTime() - start.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; 
       
-      const rExp = r.expenses.reduce((s, e) => s + e.amount, 0);
-      stats[lineId].trips += 1;
-      stats[lineId].passengers += r.passengers;
-      stats[lineId].revenue += r.revenueInformed; // Use informed revenue for performance
-      stats[lineId].expenses += rExp;
-    });
+      const prevEnd = new Date(start);
+      prevEnd.setDate(prevEnd.getDate() - 1);
+      
+      const prevStart = new Date(prevEnd);
+      prevStart.setDate(prevStart.getDate() - diffDays + 1);
 
-    return Object.values(stats).sort((a,b) => b.revenue - a.revenue);
-  }, [routes, dateRange, routeDefs, lines]);
+      return {
+          start: prevStart.toISOString().split('T')[0],
+          end: prevEnd.toISOString().split('T')[0]
+      };
+  }, [dateRange]);
 
-  // 3. Performance by Driver
-  const driverStats = useMemo(() => {
-    const relevantRoutes = routes.filter(r => r.date >= dateRange.start && r.date <= dateRange.end);
-    const stats: Record<string, { name: string, trips: number, passengers: number, revenue: number }> = {};
+  const filterByDate = (items: any[], dateField: string, range: {start: string, end: string}) => {
+      return items.filter(i => i[dateField] >= range.start && i[dateField] <= range.end);
+  };
 
-    relevantRoutes.forEach(r => {
-      const driver = drivers.find(d => d.id === r.driverId);
-      const name = driver?.name || 'Desconhecido';
-      const id = r.driverId;
+  // 2. Métricas Financeiras (DRE) - FIXED: Precision Math with money()
+  const financialMetrics = useMemo(() => {
+      const calculateMetrics = (range: {start: string, end: string}) => {
+          // Receita
+          const routesRev = filterByDate(data.routes, 'date', range).reduce((a,b) => money(a + b.revenueInformed), 0);
+          const agenciesRev = filterByDate(data.agencies, 'date', range).reduce((a,b) => money(a + b.valueInformed), 0);
+          const tourismRev = filterByDate(data.tourism, 'departureDate', range).filter(t => t.status !== 'CANCELED' && t.status !== 'REJECTED').reduce((a,b) => money(a + b.contractValue), 0);
+          const totalRevenue = money(routesRev + agenciesRev + tourismRev);
 
-      if (!stats[id]) {
-        stats[id] = { name, trips: 0, passengers: 0, revenue: 0 };
+          // Custos Variáveis
+          const fuelCost = filterByDate(data.fuel, 'date', range).reduce((a,b) => money(a + b.amount), 0);
+          const routeExp = filterByDate(data.routes, 'date', range).reduce((a,b) => money(a + b.cashExpenses), 0);
+          const agencyExp = filterByDate(data.agencies, 'date', range).reduce((a,b) => money(a + (b.expenses || []).reduce((s,e)=>money(s+e.amount),0)), 0);
+          const tourismExp = filterByDate(data.tourism, 'departureDate', range).reduce((a,b) => money(a + (b.expenses || []).reduce((s,e)=>money(s+e.amount),0)), 0);
+          const variableCosts = money(fuelCost + routeExp + agencyExp + tourismExp);
+
+          // Despesas Fixas
+          const generalExp = filterByDate(data.generalExpenses, 'date', range).reduce((a,b) => money(a + b.amount), 0);
+
+          // Resultados
+          const contributionMargin = money(totalRevenue - variableCosts);
+          const netResult = money(contributionMargin - generalExp);
+
+          return { totalRevenue, variableCosts, generalExp, netResult, contributionMargin, fuelCost };
+      };
+
+      return { 
+          current: calculateMetrics(dateRange), 
+          previous: calculateMetrics(previousPeriod) 
+      };
+  }, [data, dateRange, previousPeriod]);
+
+  // 3. Lucratividade por Veículo (Ranking)
+  const fleetProfitability = useMemo(() => {
+      const activeVehicles = data.vehicles.filter(v => v.active);
+      return activeVehicles.map(v => {
+          // Receitas
+          const vRoutes = filterByDate(data.routes, 'date', dateRange).filter(r => r.vehicleId === v.id);
+          const vTourism = filterByDate(data.tourism, 'departureDate', dateRange).filter(t => t.vehicleId === v.id && t.status !== 'CANCELED');
+          const totalRev = money(vRoutes.reduce((a,b) => money(a + b.revenueInformed), 0) + vTourism.reduce((a,b) => money(a + b.contractValue), 0));
+
+          // Custos Específicos
+          const vFuel = filterByDate(data.fuel, 'date', dateRange).filter(f => f.vehicleId === v.id);
+          const costFuel = vFuel.reduce((a,b) => money(a + b.amount), 0);
+          const costOther = money(vRoutes.reduce((a,b) => money(a + b.cashExpenses), 0) + vTourism.reduce((a,b) => money(a + (b.expenses||[]).reduce((s,e)=>money(s+e.amount),0)), 0));
+          
+          const margin = money(totalRev - (costFuel + costOther));
+          
+          return {
+              id: v.id,
+              plate: v.plate,
+              desc: v.description,
+              revenue: totalRev,
+              fuel: costFuel,
+              margin: margin,
+              marginPct: totalRev > 0 ? (margin / totalRev) * 100 : 0
+          };
+      }).sort((a,b) => b.margin - a.margin);
+  }, [data, dateRange]);
+
+  // 4. Performance das Linhas
+  const linePerformance = useMemo(() => {
+      const filteredRoutes = filterByDate(data.routes, 'date', dateRange);
+      const byLine: Record<string, { name: string, revenue: number, passengers: number }> = {};
+      
+      filteredRoutes.forEach(r => {
+          const def = data.routeDefs.find(rd => rd.id === r.routeId);
+          const line = data.lines.find(l => l.id === def?.lineId);
+          const name = line?.name || 'Desconhecida';
+          
+          if (!byLine[name]) byLine[name] = { name, revenue: 0, passengers: 0 };
+          byLine[name].revenue = money(byLine[name].revenue + r.revenueInformed);
+          byLine[name].passengers += r.passengers;
+      });
+
+      return Object.values(byLine).sort((a,b) => b.revenue - a.revenue);
+  }, [data, dateRange]);
+
+  // --- MOTOR DE INSIGHTS (IA SIMBÓLICA) ---
+  const insights = useMemo(() => {
+      const list: { type: 'success'|'warning'|'danger'|'info', title: string, message: string, action?: string }[] = [];
+      const { current, previous } = financialMetrics;
+
+      // Insight 1: Tendência de Receita e Prejuízo
+      if (current.netResult < 0) {
+          list.push({ 
+              type: 'danger', 
+              title: 'Alerta de Prejuízo Operacional', 
+              message: `A operação está com saldo negativo de ${formatMoney(current.netResult)}. As despesas superaram as receitas.`,
+              action: 'Revise custos fixos e corte gastos não essenciais imediatamente.' 
+          });
+      } else if (current.totalRevenue > previous.totalRevenue * 1.15) {
+          list.push({ 
+              type: 'success', 
+              title: 'Crescimento de Receita', 
+              message: `A receita aumentou ${formatPercent(((current.totalRevenue - previous.totalRevenue)/previous.totalRevenue)*100)} comparado ao período anterior.`,
+              action: 'Identifique qual linha puxou esse crescimento e considere aumentar horários.' 
+          });
+      } else if (current.totalRevenue < previous.totalRevenue * 0.9 && previous.totalRevenue > 0) {
+          list.push({
+              type: 'warning',
+              title: 'Queda na Arrecadação',
+              message: `Houve uma retração de ${formatPercent(((current.totalRevenue - previous.totalRevenue)/previous.totalRevenue)*100)} nas vendas.`,
+              action: 'Verifique se houve perda de viagens ou redução na demanda de passageiros.'
+          });
       }
 
-      stats[id].trips += 1;
-      stats[id].passengers += r.passengers;
-      stats[id].revenue += r.revenueInformed;
-    });
+      // Insight 2: Anomalia de Combustível (Regra de Ouro: Max 35-40% da Receita)
+      const fuelRatio = current.totalRevenue > 0 ? (current.fuelCost / current.totalRevenue) : 0;
+      if (fuelRatio > 0.45) {
+          list.push({ 
+              type: 'danger', 
+              title: 'Custo de Combustível Crítico', 
+              message: `O diesel está consumindo ${(fuelRatio*100).toFixed(1)}% de toda a sua receita. (Ideal de mercado: < 35%)`,
+              action: 'Agende manutenção da frota ou verifique a condução dos motoristas.'
+          });
+      }
 
-    return Object.values(stats).sort((a,b) => b.revenue - a.revenue);
-  }, [routes, dateRange, drivers]);
+      // Insight 3: Veículo "Ladrão de Lucro"
+      const loserVehicle = fleetProfitability.find(v => v.margin < 0 && v.revenue > 0);
+      if (loserVehicle) {
+          list.push({ 
+              type: 'warning', 
+              title: 'Veículo Deficitário Identificado', 
+              message: `O ônibus ${loserVehicle.plate} (${loserVehicle.desc}) está gerando prejuízo de ${formatMoney(loserVehicle.margin)}.`,
+              action: 'Avalie se este veículo está consumindo muito combustível ou rodando em linhas de baixa demanda.' 
+          });
+      }
 
-  // 4. Advanced Fuel Analytics
-  const fuelAnalytics = useMemo(() => {
-    // We need to calculate stats for all vehicles first to get mileage deltas, then filter by date
-    const statsByVehicle: Record<string, { 
-      plate: string, 
-      desc: string,
-      liters: number, 
-      cost: number, 
-      count: number,
-      distance: number,
-      paymentMethods: Record<string, number>
-    }> = {};
+      // Insight 4: Campeão de Vendas
+      const topVehicle = fleetProfitability[0];
+      if (topVehicle && topVehicle.margin > 0) {
+           list.push({ 
+              type: 'info', 
+              title: 'Destaque da Frota', 
+              message: `O veículo ${topVehicle.plate} é o mais rentável, gerando ${formatMoney(topVehicle.margin)} de lucro líquido.`,
+          });
+      }
 
-    vehicles.forEach(vehicle => {
-        // Get all entries for this vehicle sorted by date/mileage ASC
-        const vEntries = fuelEntries
-          .filter(f => f.vehicleId === vehicle.id)
-          .sort((a, b) => a.date.localeCompare(b.date) || (a.mileage || 0) - (b.mileage || 0));
-        
-        // Initialize stats
-        statsByVehicle[vehicle.id] = {
-            plate: vehicle.plate,
-            desc: vehicle.description,
-            liters: 0,
-            cost: 0,
-            count: 0,
-            distance: 0,
-            paymentMethods: { 'CASH': 0, 'CARD': 0, 'CREDIT': 0 }
-        };
-
-        // Iterate to find entries WITHIN range and calculate distance based on previous entry
-        vEntries.forEach((entry, idx) => {
-            // Check if entry is within Report Date Range
-            const inRange = entry.date >= dateRange.start && entry.date <= dateRange.end;
-            
-            if (inRange) {
-                const s = statsByVehicle[vehicle.id];
-                s.cost += entry.amount;
-                s.liters += (entry.liters || 0);
-                s.count += 1;
-                s.paymentMethods[entry.paymentMethod] = (s.paymentMethods[entry.paymentMethod] || 0) + entry.amount;
-
-                // Calculate Distance
-                // Look at previous entry (even if outside range) to determine distance traveled FOR this fill-up
-                if (idx > 0) {
-                    const prev = vEntries[idx - 1];
-                    if (entry.mileage && prev.mileage) {
-                        const dist = entry.mileage - prev.mileage;
-                        if (dist > 0) s.distance += dist;
-                    }
-                }
-            }
-        });
-    });
-
-    const list = Object.values(statsByVehicle)
-        .filter(s => s.count > 0) // Remove vehicles with no activity in range
-        .map(s => ({
-            ...s,
-            kmPerLiter: s.distance > 0 && s.liters > 0 ? s.distance / s.liters : 0,
-            costPerKm: s.distance > 0 ? s.cost / s.distance : 0,
-            avgPrice: s.liters > 0 ? s.cost / s.liters : 0
-        }))
-        .sort((a, b) => b.cost - a.cost);
-
-    const totalCost = list.reduce((acc, curr) => acc + curr.cost, 0);
-    const totalLiters = list.reduce((acc, curr) => acc + curr.liters, 0);
-    const totalDist = list.reduce((acc, curr) => acc + curr.distance, 0);
-    
-    // Weighted Averages
-    const fleetKmL = totalLiters > 0 ? totalDist / totalLiters : 0;
-    const fleetCostKm = totalDist > 0 ? totalCost / totalDist : 0;
-
-    return { list, totalCost, totalLiters, totalDist, fleetKmL, fleetCostKm };
-  }, [fuelEntries, dateRange, vehicles]);
-
-  // 5. Tourism Analytics
-  const tourismAnalytics = useMemo(() => {
-    const list = tourismServices
-        .filter(t => t.departureDate >= dateRange.start && t.departureDate <= dateRange.end)
-        .sort((a,b) => b.departureDate.localeCompare(a.departureDate));
-    
-    const stats = list.reduce((acc, curr) => {
-        const expenses = (curr.expenses || []).reduce((a,b) => a + b.amount, 0);
-        return {
-            revenue: acc.revenue + curr.contractValue,
-            expenses: acc.expenses + expenses,
-            count: acc.count + 1,
-            completed: acc.completed + (curr.status === 'COMPLETED' ? 1 : 0)
-        };
-    }, { revenue: 0, expenses: 0, count: 0, completed: 0 });
-
-    const profit = stats.revenue - stats.expenses;
-    const margin = stats.revenue > 0 ? (profit / stats.revenue) * 100 : 0;
-
-    const chartData = list.slice(0, 10).map(t => ({
-        name: t.destination.substring(0, 12) + '...',
-        revenue: t.contractValue,
-        expenses: (t.expenses || []).reduce((a,b) => a + b.amount, 0),
-        profit: t.contractValue - (t.expenses || []).reduce((a,b) => a + b.amount, 0)
-    }));
-
-    return { list, stats, profit, margin, chartData };
-  }, [tourismServices, dateRange]);
+      return list.slice(0, 4); // Limitar aos 4 mais importantes
+  }, [financialMetrics, fleetProfitability]);
 
 
   return (
-    <div className="space-y-6">
-       {/* Styles for Printing */}
-       <style>{`
-        @media print {
-          .no-print { display: none !important; }
-          .print-full { width: 100% !important; margin: 0 !important; padding: 0 !important; }
-          body { background: white; }
-          .card-print { box-shadow: none; border: 1px solid #ccc; }
-        }
-      `}</style>
-
-      {/* Header & Controls */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 no-print">
-         <div>
-            <h2 className="text-xl font-extrabold text-slate-800">Central de Relatórios</h2>
-            <p className="text-sm text-slate-500 font-medium">Análise de desempenho e resultados financeiros</p>
-         </div>
-         <Button onClick={handlePrint} variant="secondary" className="shadow-sm">
-            <Printer size={18} /> Imprimir Relatório
-         </Button>
-      </div>
-
-      {/* Filters - Dark Mode Date */}
-      <Card className="bg-slate-900 border-slate-800 p-4 no-print shadow-md">
-         <div className="flex flex-col md:flex-row gap-4 items-end">
+    <div className="pb-12 space-y-8">
+      {/* HEADER */}
+      <div className="bg-white border-b border-slate-200 px-6 py-5 sticky top-0 z-20 shadow-sm">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
             <div>
-               <label className="block text-xs font-bold text-slate-400 mb-1">Início</label>
-               <input type="date" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} className={DARK_INPUT_CLASS}/>
+              <h2 className="text-2xl font-extrabold text-slate-800 flex items-center gap-2">
+                  <Activity className="text-blue-600"/> Inteligência Gerencial
+              </h2>
+              <p className="text-slate-500 text-sm">Painel de decisão estratégica e análise financeira.</p>
             </div>
-            <div>
-               <label className="block text-xs font-bold text-slate-400 mb-1">Fim</label>
-               <input type="date" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} className={DARK_INPUT_CLASS}/>
-            </div>
-            <div className="flex-1 overflow-x-auto">
-               <label className="block text-xs font-bold text-slate-400 mb-1">Tipo de Relatório</label>
-               <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700 shadow-sm min-w-max">
-                  {[
-                    {id: 'financial', label: 'Fechamento de Caixa', icon: DollarSign},
-                    {id: 'lines', label: 'Por Linha', icon: TrendingUp},
-                    {id: 'drivers', label: 'Motoristas', icon: Users},
-                    {id: 'fuel', label: 'Combustível', icon: Fuel},
-                    {id: 'tourism', label: 'Turismo', icon: MapPinned},
-                  ].map(tab => (
-                    <button
+
+            <div className="flex bg-slate-100 p-1 rounded-lg">
+                 {[
+                   { id: 'overview', label: 'Visão Geral (DRE)' },
+                   { id: 'profitability', label: 'Lucratividade da Frota' },
+                   { id: 'operational', label: 'Linhas e Rotas' },
+                 ].map(tab => (
+                   <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id as any)}
-                      className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold rounded-md transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:bg-slate-700 hover:text-white'}`}
-                    >
-                      <tab.icon size={14}/> {tab.label}
-                    </button>
-                  ))}
-               </div>
+                      className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${activeTab === tab.id ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                   >
+                      {tab.label}
+                   </button>
+                 ))}
             </div>
-         </div>
-      </Card>
 
-      {/* --- REPORT VIEW: FINANCIAL --- */}
-      {activeTab === 'financial' && (
-        <div className="space-y-6 animate-in fade-in duration-300">
-           {/* Summary Cards */}
-           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <Card className="p-4 bg-white border-l-4 border-blue-600">
-                 <p className="text-xs text-slate-500 uppercase font-bold">Receita Bruta</p>
-                 <p className="text-xl font-extrabold text-slate-800">{formatMoney(financialTotals.rev)}</p>
-              </Card>
-              <Card className="p-4 bg-white border-l-4 border-red-500">
-                 <p className="text-xs text-slate-500 uppercase font-bold">Total Despesas</p>
-                 <p className="text-xl font-extrabold text-red-600">{formatMoney(financialTotals.exp)}</p>
-              </Card>
-              <Card className="p-4 bg-white border-l-4 border-purple-500">
-                 <p className="text-xs text-slate-500 uppercase font-bold">Comissões</p>
-                 <p className="text-xl font-extrabold text-purple-700">{formatMoney(financialTotals.comm)}</p>
-              </Card>
-              <Card className="p-4 bg-white border-l-4 border-green-600">
-                 <p className="text-xs text-slate-500 uppercase font-bold">Resultado Líquido</p>
-                 <p className="text-xl font-extrabold text-green-700">{formatMoney(financialTotals.net)}</p>
-              </Card>
-              <Card className="p-4 bg-white border-l-4 border-amber-500">
-                 <p className="text-xs text-slate-500 uppercase font-bold">Diferenças</p>
-                 <p className={`text-xl font-extrabold ${financialTotals.diff < 0 ? 'text-red-600' : 'text-slate-600'}`}>{formatMoney(financialTotals.diff)}</p>
-              </Card>
-           </div>
-
-           <Card className="card-print">
-              <div className="flex justify-between items-center mb-4 p-2 border-b">
-                 <h3 className="text-lg font-bold text-slate-800">Extrato de Fechamentos Diários</h3>
-                 <span className="text-xs font-bold text-slate-500">Período: {new Date(dateRange.start).toLocaleDateString()} à {new Date(dateRange.end).toLocaleDateString()}</span>
-              </div>
-              <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-100 text-slate-700 uppercase text-xs">
-                    <tr>
-                      <th className="px-4 py-2">Data</th>
-                      <th className="px-4 py-2 text-right">Venda Bruta</th>
-                      <th className="px-4 py-2 text-right">Despesas</th>
-                      <th className="px-4 py-2 text-right">Comissões</th>
-                      <th className="px-4 py-2 text-right">Líquido</th>
-                      <th className="px-4 py-2 text-right">Diferença</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredCloses.map(c => (
-                       <tr key={c.id} className="hover:bg-slate-50">
-                          <td className="px-4 py-2 font-medium">{formatDateDisplay(c.date)}</td>
-                          <td className="px-4 py-2 text-right">{formatMoney(c.totalRouteRevenue + c.totalAgencyRevenue)}</td>
-                          <td className="px-4 py-2 text-right text-red-600">{formatMoney(c.totalExpenses + (c.totalAgencyExpenses || 0))}</td>
-                          <td className="px-4 py-2 text-right text-purple-600">
-                             {c.totalCommissions > 0 ? `-${formatMoney(c.totalCommissions)}` : '-'}
-                          </td>
-                          <td className="px-4 py-2 text-right font-bold text-green-700">{formatMoney(c.netResult)}</td>
-                          <td className={`px-4 py-2 text-right font-bold text-xs ${c.totalDiff < -1 ? 'text-red-500' : 'text-slate-400'}`}>
-                             {formatMoney(c.totalDiff)}
-                          </td>
-                       </tr>
-                    ))}
-                    {filteredCloses.length === 0 && <tr><td colSpan={6} className="p-4 text-center italic text-slate-500">Nenhum fechamento neste período.</td></tr>}
-                  </tbody>
-              </table>
-           </Card>
+            <div className="flex items-center gap-2 bg-white border border-slate-300 rounded-lg p-1.5 px-3 shadow-sm">
+              <Calendar size={16} className="text-slate-400"/>
+              <input type="date" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none w-32"/>
+              <span className="text-slate-300">até</span>
+              <input type="date" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none w-32"/>
+            </div>
         </div>
-      )}
+      </div>
 
-      {/* --- REPORT VIEW: LINES --- */}
-      {activeTab === 'lines' && (
-         <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="h-64 no-print">
-               <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={lineStats.slice(0, 10)}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="name" fontSize={10} tickFormatter={(val) => val.substr(0, 15)+'...'} />
-                    <YAxis fontSize={10} />
-                    <Tooltip formatter={(val: number) => formatMoney(val)} />
-                    <Legend />
-                    <Bar dataKey="revenue" name="Receita" fill="#2563eb" radius={[4,4,0,0]} />
-                    <Bar dataKey="expenses" name="Despesas" fill="#ef4444" radius={[4,4,0,0]} />
-                  </BarChart>
-               </ResponsiveContainer>
-            </div>
+      <div className="max-w-7xl mx-auto px-6">
+        
+        {/* SECTION: SMART INSIGHTS */}
+        <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {insights.length > 0 ? insights.map((insight, idx) => (
+                <InsightCard key={idx} {...insight} />
+            )) : (
+                <div className="col-span-2 bg-slate-50 p-6 rounded-xl border border-slate-200 text-center flex flex-col items-center justify-center text-slate-500">
+                    <CheckCircle2 size={32} className="mb-2 text-slate-400"/>
+                    <p className="font-medium">Nenhuma anomalia crítica detectada neste período.</p>
+                    <p className="text-sm">Sua operação está rodando dentro dos padrões esperados.</p>
+                </div>
+            )}
+        </div>
 
-            <Card className="card-print">
-              <h3 className="text-lg font-bold text-slate-800 mb-4 px-2">Desempenho por Linha</h3>
-              <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-100 text-slate-700 uppercase text-xs">
-                    <tr>
-                      <th className="px-4 py-2">Linha</th>
-                      <th className="px-4 py-2 text-center">Viagens</th>
-                      <th className="px-4 py-2 text-center">Passageiros</th>
-                      <th className="px-4 py-2 text-right">Receita Total</th>
-                      <th className="px-4 py-2 text-right">Despesas</th>
-                      <th className="px-4 py-2 text-right">Saldo</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {lineStats.map((l, idx) => (
-                       <tr key={idx} className="hover:bg-slate-50">
-                          <td className="px-4 py-2 font-bold text-slate-700">{l.name}</td>
-                          <td className="px-4 py-2 text-center">{l.trips}</td>
-                          <td className="px-4 py-2 text-center">{l.passengers}</td>
-                          <td className="px-4 py-2 text-right text-blue-700 font-medium">{formatMoney(l.revenue)}</td>
-                          <td className="px-4 py-2 text-right text-red-600 font-medium">{formatMoney(l.expenses)}</td>
-                          <td className="px-4 py-2 text-right font-extrabold text-slate-800">{formatMoney(l.revenue - l.expenses)}</td>
-                       </tr>
-                    ))}
-                    {lineStats.length === 0 && <tr><td colSpan={6} className="p-4 text-center italic text-slate-500">Sem dados operacionais.</td></tr>}
-                  </tbody>
-              </table>
-            </Card>
-         </div>
-      )}
+        {/* TAB 1: OVERVIEW (DRE) */}
+        {activeTab === 'overview' && (
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <KpiCard title="Receita Bruta" value={financialMetrics.current.totalRevenue} comparisonValue={financialMetrics.previous.totalRevenue} icon={Wallet} color="blue"/>
+                <KpiCard title="Custos Variáveis" value={financialMetrics.current.variableCosts} comparisonValue={financialMetrics.previous.variableCosts} subtext="Combustível + Viagens" icon={TrendingDown} color="red"/>
+                <KpiCard title="Despesas Fixas" value={financialMetrics.current.generalExp} comparisonValue={financialMetrics.previous.generalExp} subtext="Administrativo / Manutenção" icon={Receipt} color="purple"/>
+                <KpiCard title="Resultado Líquido" value={financialMetrics.current.netResult} comparisonValue={financialMetrics.previous.netResult} subtext="Lucro/Prejuízo Real" icon={Target} color={financialMetrics.current.netResult >= 0 ? 'green' : 'red'}/>
+             </div>
 
-      {/* --- REPORT VIEW: DRIVERS --- */}
-      {activeTab === 'drivers' && (
-         <div className="space-y-6 animate-in fade-in duration-300">
-            <Card className="card-print">
-              <h3 className="text-lg font-bold text-slate-800 mb-4 px-2">Produtividade por Motorista</h3>
-              <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-100 text-slate-700 uppercase text-xs">
-                    <tr>
-                      <th className="px-4 py-2">Motorista</th>
-                      <th className="px-4 py-2 text-center">Viagens Realizadas</th>
-                      <th className="px-4 py-2 text-center">Total Passageiros</th>
-                      <th className="px-4 py-2 text-right">Receita Gerada</th>
-                      <th className="px-4 py-2 text-right">Média/Viagem</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {driverStats.map((d, idx) => (
-                       <tr key={idx} className="hover:bg-slate-50">
-                          <td className="px-4 py-2 font-bold text-slate-700">{d.name}</td>
-                          <td className="px-4 py-2 text-center">{d.trips}</td>
-                          <td className="px-4 py-2 text-center">{d.passengers}</td>
-                          <td className="px-4 py-2 text-right text-blue-700 font-bold">{formatMoney(d.revenue)}</td>
-                          <td className="px-4 py-2 text-right text-slate-500">
-                             {d.trips > 0 ? formatMoney(d.revenue / d.trips) : '-'}
-                          </td>
-                       </tr>
-                    ))}
-                    {driverStats.length === 0 && <tr><td colSpan={5} className="p-4 text-center italic text-slate-500">Sem dados.</td></tr>}
-                  </tbody>
-              </table>
-            </Card>
-         </div>
-      )}
-
-      {/* --- REPORT VIEW: FUEL (ADVANCED) --- */}
-      {activeTab === 'fuel' && (
-         <div className="space-y-6 animate-in fade-in duration-300">
-            {/* 1. KPIs */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Card className="p-4 bg-white border-l-4 border-blue-600 shadow-sm">
-                   <p className="text-xs text-slate-500 uppercase font-bold tracking-wide">Custo Total</p>
-                   <p className="text-2xl font-extrabold text-slate-800">{formatMoney(fuelAnalytics.totalCost)}</p>
-                   <p className="text-xs text-slate-400 mt-1">{formatNumber(fuelAnalytics.totalLiters)} litros consumidos</p>
-                </Card>
-                <Card className="p-4 bg-white border-l-4 border-green-600 shadow-sm">
-                   <p className="text-xs text-slate-500 uppercase font-bold tracking-wide">Eficiência Global</p>
-                   <p className="text-2xl font-extrabold text-green-700">{fuelAnalytics.fleetKmL.toFixed(2)} <span className="text-sm">km/l</span></p>
-                   <p className="text-xs text-slate-400 mt-1">Média ponderada da frota</p>
-                </Card>
-                <Card className="p-4 bg-white border-l-4 border-amber-500 shadow-sm">
-                   <p className="text-xs text-slate-500 uppercase font-bold tracking-wide">Custo por KM</p>
-                   <p className="text-2xl font-extrabold text-amber-700">R$ {fuelAnalytics.fleetCostKm.toFixed(2)}</p>
-                   <p className="text-xs text-slate-400 mt-1">Custo médio de rodagem</p>
-                </Card>
-                <Card className="p-4 bg-white border-l-4 border-indigo-500 shadow-sm">
-                   <p className="text-xs text-slate-500 uppercase font-bold tracking-wide">Distância Percorrida</p>
-                   <p className="text-2xl font-extrabold text-indigo-700">{formatNumber(fuelAnalytics.totalDist)} <span className="text-sm">km</span></p>
-                   <p className="text-xs text-slate-400 mt-1">Total acumulado no período</p>
-                </Card>
-            </div>
-
-            {/* 2. Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 no-print">
-               <Card className="h-80 p-4">
-                   <h4 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
-                       <Gauge size={16} className="text-green-600"/> Eficiência por Veículo (Km/L)
-                   </h4>
-                   <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={fuelAnalytics.list} layout="vertical" margin={{left: 40}}>
-                         <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false}/>
-                         <XAxis type="number" fontSize={10} />
-                         <YAxis dataKey="plate" type="category" fontSize={10} width={60} fontWeight="bold"/>
-                         <Tooltip 
-                            formatter={(val: number) => val.toFixed(2) + ' km/l'}
-                            contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
-                         />
-                         <Bar dataKey="kmPerLiter" fill="#16a34a" radius={[0, 4, 4, 0]} barSize={20} name="Km/L"/>
-                      </BarChart>
-                   </ResponsiveContainer>
-               </Card>
-               <Card className="h-80 p-4">
-                   <h4 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
-                       <DollarSign size={16} className="text-blue-600"/> Custo Total por Veículo
-                   </h4>
-                   <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={fuelAnalytics.list} layout="vertical" margin={{left: 40}}>
-                         <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false}/>
-                         <XAxis type="number" fontSize={10} tickFormatter={(val) => `R$${val/1000}k`} />
-                         <YAxis dataKey="plate" type="category" fontSize={10} width={60} fontWeight="bold"/>
-                         <Tooltip 
-                            formatter={(val: number) => formatMoney(val)}
-                            contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
-                         />
-                         <Bar dataKey="cost" fill="#2563eb" radius={[0, 4, 4, 0]} barSize={20} name="Custo Total"/>
-                      </BarChart>
-                   </ResponsiveContainer>
-               </Card>
-            </div>
-
-            {/* 3. Detailed Table */}
-            <Card className="card-print">
-              <div className="flex justify-between items-end mb-4 px-2">
-                 <div>
-                    <h3 className="text-lg font-bold text-slate-800">Detalhamento de Frotas</h3>
-                    <p className="text-xs text-slate-500">Análise detalhada de consumo e eficiência por veículo</p>
+             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                 <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2"><PieChartIcon size={18}/> Estrutura de Resultados (Waterfall)</h3>
+                    <div className="h-72 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={[
+                                { name: 'Receita', valor: financialMetrics.current.totalRevenue, fill: '#2563eb' },
+                                { name: 'Custos Var.', valor: financialMetrics.current.variableCosts, fill: '#f59e0b' },
+                                { name: 'Desp. Fixas', valor: financialMetrics.current.generalExp, fill: '#ef4444' },
+                                { name: 'Lucro Líq.', valor: financialMetrics.current.netResult, fill: financialMetrics.current.netResult >= 0 ? '#10b981' : '#b91c1c' },
+                            ]} layout="vertical" margin={{ left: 20 }}>
+                                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false}/>
+                                <XAxis type="number" tickFormatter={(val) => `R$${val/1000}k`}/>
+                                <YAxis dataKey="name" type="category" width={80} style={{fontWeight: 'bold', fontSize: '12px'}}/>
+                                <Tooltip cursor={{fill: 'transparent'}} formatter={(val: number) => formatMoney(val)}/>
+                                <Bar dataKey="valor" radius={[0, 4, 4, 0]} barSize={40}/>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
                  </div>
-              </div>
-              <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-100 text-slate-700 uppercase text-xs">
-                    <tr>
-                      <th className="px-4 py-2">Veículo</th>
-                      <th className="px-4 py-2 text-center">Abast.</th>
-                      <th className="px-4 py-2 text-right">Km Rodados</th>
-                      <th className="px-4 py-2 text-right">Litros</th>
-                      <th className="px-4 py-2 text-right bg-green-50 text-green-800 border-l border-green-100">Km/L Médio</th>
-                      <th className="px-4 py-2 text-right bg-amber-50 text-amber-800 border-l border-amber-100">R$/Km</th>
-                      <th className="px-4 py-2 text-right">Custo Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {fuelAnalytics.list.map((f, idx) => (
-                       <tr key={idx} className="hover:bg-slate-50">
-                          <td className="px-4 py-2">
-                              <div className="font-bold text-slate-800">{f.plate}</div>
-                              <div className="text-[10px] text-slate-500 uppercase">{f.desc}</div>
-                          </td>
-                          <td className="px-4 py-2 text-center text-slate-500">{f.count}</td>
-                          <td className="px-4 py-2 text-right font-medium">{formatNumber(f.distance)} km</td>
-                          <td className="px-4 py-2 text-right text-slate-600">{formatNumber(f.liters)} L</td>
-                          
-                          {/* Efficiency */}
-                          <td className="px-4 py-2 text-right font-bold text-green-700 bg-green-50/30 border-l border-green-50">
-                             {f.kmPerLiter > 0 ? f.kmPerLiter.toFixed(2) : '-'}
-                          </td>
 
-                          {/* Cost Per Km */}
-                          <td className="px-4 py-2 text-right font-bold text-amber-700 bg-amber-50/30 border-l border-amber-50">
-                             {f.costPerKm > 0 ? `R$ ${f.costPerKm.toFixed(2)}` : '-'}
-                          </td>
-
-                          <td className="px-4 py-2 text-right font-extrabold text-slate-800">{formatMoney(f.cost)}</td>
-                       </tr>
-                    ))}
-                    {fuelAnalytics.list.length === 0 && <tr><td colSpan={7} className="p-4 text-center italic text-slate-500">Sem registros no período.</td></tr>}
-                  </tbody>
-                  <tfoot className="bg-slate-50 border-t-2 border-slate-200">
-                     <tr>
-                        <td className="px-4 py-3 font-extrabold text-slate-800 uppercase text-xs">Totais da Frota</td>
-                        <td className="px-4 py-3 text-center font-bold">{fuelAnalytics.list.reduce((a,b)=>a+b.count,0)}</td>
-                        <td className="px-4 py-3 text-right font-bold">{formatNumber(fuelAnalytics.totalDist)} km</td>
-                        <td className="px-4 py-3 text-right font-bold">{formatNumber(fuelAnalytics.totalLiters)} L</td>
-                        <td className="px-4 py-3 text-right font-extrabold text-green-700">{fuelAnalytics.fleetKmL.toFixed(2)}</td>
-                        <td className="px-4 py-3 text-right font-extrabold text-amber-700">R$ {fuelAnalytics.fleetCostKm.toFixed(2)}</td>
-                        <td className="px-4 py-3 text-right font-extrabold text-blue-800">{formatMoney(fuelAnalytics.totalCost)}</td>
-                     </tr>
-                  </tfoot>
-              </table>
-            </Card>
-         </div>
-      )}
-
-      {/* --- REPORT VIEW: TOURISM --- */}
-      {activeTab === 'tourism' && (
-         <div className="space-y-6 animate-in fade-in duration-300">
-            {/* KPIs */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Card className="p-4 bg-white border-l-4 border-blue-600 shadow-sm">
-                   <p className="text-xs text-slate-500 uppercase font-bold tracking-wide">Faturamento Total</p>
-                   <p className="text-2xl font-extrabold text-slate-800">{formatMoney(tourismAnalytics.stats.revenue)}</p>
-                   <p className="text-xs text-slate-400 mt-1">{tourismAnalytics.stats.count} viagens no período</p>
-                </Card>
-                <Card className="p-4 bg-white border-l-4 border-red-500 shadow-sm">
-                   <p className="text-xs text-slate-500 uppercase font-bold tracking-wide">Custos de Viagem</p>
-                   <p className="text-2xl font-extrabold text-red-700">{formatMoney(tourismAnalytics.stats.expenses)}</p>
-                   <p className="text-xs text-slate-400 mt-1">Pedágios, alimentação, etc</p>
-                </Card>
-                <Card className="p-4 bg-white border-l-4 border-green-600 shadow-sm">
-                   <p className="text-xs text-slate-500 uppercase font-bold tracking-wide">Lucro Líquido</p>
-                   <p className="text-2xl font-extrabold text-green-700">{formatMoney(tourismAnalytics.profit)}</p>
-                   <p className="text-xs text-slate-400 mt-1">Margem de {tourismAnalytics.margin.toFixed(1)}%</p>
-                </Card>
-                <Card className="p-4 bg-white border-l-4 border-indigo-500 shadow-sm">
-                   <p className="text-xs text-slate-500 uppercase font-bold tracking-wide">Viagens Realizadas</p>
-                   <p className="text-2xl font-extrabold text-indigo-700">{tourismAnalytics.stats.completed}</p>
-                   <p className="text-xs text-slate-400 mt-1">Status 'Concluído'</p>
-                </Card>
-            </div>
-
-            {/* Charts */}
-            <div className="grid grid-cols-1 gap-6 no-print">
-               <Card className="h-96 p-4">
-                   <h4 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
-                       <Briefcase size={16} className="text-blue-600"/> Rentabilidade por Viagem (Top 10 Recentes)
-                   </h4>
-                   <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={tourismAnalytics.chartData} margin={{bottom: 20}}>
-                         <CartesianGrid strokeDasharray="3 3" vertical={false}/>
-                         <XAxis dataKey="name" fontSize={10} tick={{dy: 10}} height={40} />
-                         <YAxis fontSize={10} tickFormatter={(val) => `R$${val/1000}k`}/>
-                         <Tooltip 
-                            formatter={(val: number) => formatMoney(val)}
-                            contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
-                         />
-                         <Legend verticalAlign="top" height={36}/>
-                         <Bar dataKey="revenue" name="Receita" fill="#2563eb" radius={[4,4,0,0]} barSize={30} />
-                         <Bar dataKey="expenses" name="Despesas" fill="#ef4444" radius={[4,4,0,0]} barSize={30} />
-                         <Bar dataKey="profit" name="Lucro" fill="#16a34a" radius={[4,4,0,0]} barSize={30} />
-                      </BarChart>
-                   </ResponsiveContainer>
-               </Card>
-            </div>
-
-            {/* Table */}
-            <Card className="card-print">
-              <div className="flex justify-between items-end mb-4 px-2">
-                 <div>
-                    <h3 className="text-lg font-bold text-slate-800">Relatório de Fretamentos</h3>
-                    <p className="text-xs text-slate-500">Histórico de viagens e rentabilidade</p>
+                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div className="bg-slate-50 p-4 border-b border-slate-200"><h3 className="font-bold text-slate-800">D.R.E. Sintético</h3></div>
+                    <table className="w-full text-sm">
+                        <tbody className="divide-y divide-slate-100">
+                            <tr><td className="px-4 py-3 font-medium text-slate-600">(=) Receita Bruta</td><td className="px-4 py-3 text-right font-bold text-blue-700">{formatMoney(financialMetrics.current.totalRevenue)}</td></tr>
+                            <tr className="bg-slate-50/50"><td className="px-4 py-3 font-medium text-slate-600">(-) Combustível</td><td className="px-4 py-3 text-right text-red-600">{formatMoney(financialMetrics.current.fuelCost)}</td></tr>
+                            <tr><td className="px-4 py-3 font-medium text-slate-600">(-) Desp. Variáveis</td><td className="px-4 py-3 text-right text-red-600">{formatMoney(financialMetrics.current.variableCosts - financialMetrics.current.fuelCost)}</td></tr>
+                            <tr className="bg-blue-50 border-t border-blue-100"><td className="px-4 py-3 font-bold text-blue-900">(=) Margem Contrib.</td><td className="px-4 py-3 text-right font-bold text-blue-900">{formatMoney(financialMetrics.current.contributionMargin)}</td></tr>
+                            <tr><td className="px-4 py-3 font-medium text-slate-600">(-) Desp. Fixas</td><td className="px-4 py-3 text-right text-red-600">{formatMoney(financialMetrics.current.generalExp)}</td></tr>
+                            <tr className={`border-t-2 ${financialMetrics.current.netResult >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                                <td className="px-4 py-4 font-extrabold text-slate-800 text-lg">RESULTADO</td>
+                                <td className={`px-4 py-4 text-right font-extrabold text-lg ${financialMetrics.current.netResult >= 0 ? 'text-green-700' : 'text-red-700'}`}>{formatMoney(financialMetrics.current.netResult)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
                  </div>
-              </div>
-              <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-100 text-slate-700 uppercase text-xs">
-                    <tr>
-                      <th className="px-4 py-2">Data</th>
-                      <th className="px-4 py-2">Cliente / Destino</th>
-                      <th className="px-4 py-2">Motorista</th>
-                      <th className="px-4 py-2 text-right">Contrato</th>
-                      <th className="px-4 py-2 text-right">Despesas</th>
-                      <th className="px-4 py-2 text-right">Lucro</th>
-                      <th className="px-4 py-2 text-center">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {tourismAnalytics.list.map((t, idx) => {
-                       const exp = (t.expenses || []).reduce((a,b)=>a+b.amount,0);
-                       const profit = t.contractValue - exp;
-                       return (
-                       <tr key={idx} className="hover:bg-slate-50">
-                          <td className="px-4 py-2 font-medium">{formatDateDisplay(t.departureDate)}</td>
-                          <td className="px-4 py-2">
-                              <div className="font-bold text-slate-800">{t.contractorName}</div>
-                              <div className="text-[10px] text-slate-500">{t.destination}</div>
-                          </td>
-                          <td className="px-4 py-2 text-xs text-slate-600">
-                             {drivers.find(d => d.id === t.driverId)?.name || '-'}
-                          </td>
-                          <td className="px-4 py-2 text-right font-medium text-blue-700">{formatMoney(t.contractValue)}</td>
-                          <td className="px-4 py-2 text-right text-red-600">{formatMoney(exp)}</td>
-                          <td className={`px-4 py-2 text-right font-extrabold ${profit > 0 ? 'text-green-700' : 'text-slate-500'}`}>{formatMoney(profit)}</td>
-                          <td className="px-4 py-2 text-center text-[10px] font-bold uppercase text-slate-500">{t.status}</td>
-                       </tr>
-                    )})}
-                    {tourismAnalytics.list.length === 0 && <tr><td colSpan={7} className="p-4 text-center italic text-slate-500">Sem registros no período.</td></tr>}
-                  </tbody>
-              </table>
-            </Card>
-         </div>
-      )}
+             </div>
+          </div>
+        )}
+
+        {/* TAB 2: PROFITABILITY */}
+        {activeTab === 'profitability' && (
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div className="p-6 border-b border-slate-200">
+                        <h3 className="font-bold text-slate-800 flex items-center gap-2"><Truck size={20}/> Lucratividade Real por Veículo</h3>
+                        <p className="text-sm text-slate-500 mt-1">Margem calculada subtraindo o combustível e despesas específicas da receita gerada pelo veículo.</p>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-xs">
+                                <tr>
+                                    <th className="px-6 py-4">Veículo</th>
+                                    <th className="px-6 py-4 text-right">Receita</th>
+                                    <th className="px-6 py-4 text-right">Combustível</th>
+                                    <th className="px-6 py-4 text-right">Margem R$</th>
+                                    <th className="px-6 py-4 text-center">Margem %</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {fleetProfitability.map((item) => (
+                                    <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                                        <td className="px-6 py-4">
+                                            <div className="font-bold text-slate-800">{item.plate}</div>
+                                            <div className="text-xs text-slate-500">{item.desc}</div>
+                                        </td>
+                                        <td className="px-6 py-4 text-right font-medium text-blue-700">{formatMoney(item.revenue)}</td>
+                                        <td className="px-6 py-4 text-right text-red-600">{formatMoney(item.fuel)}</td>
+                                        <td className={`px-6 py-4 text-right font-bold ${item.margin >= 0 ? 'text-green-700' : 'text-red-700'}`}>{formatMoney(item.margin)}</td>
+                                        <td className="px-6 py-4 text-center">
+                                            <span className={`px-2 py-1 rounded text-xs font-bold ${item.marginPct >= 20 ? 'bg-green-100 text-green-700' : item.marginPct > 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                                                {formatPercent(item.marginPct)}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* TAB 3: OPERATIONAL */}
+        {activeTab === 'operational' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 className="font-bold text-slate-800 mb-4">Top 5 Linhas (Receita)</h3>
+                    <div className="h-80 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={linePerformance.slice(0,5)} layout="vertical" margin={{ left: 10 }}>
+                                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false}/>
+                                <XAxis type="number" hide/>
+                                <YAxis dataKey="name" type="category" width={100} style={{fontSize: '11px', fontWeight: 'bold'}}/>
+                                <Tooltip formatter={(val: number) => formatMoney(val)} cursor={{fill: 'transparent'}}/>
+                                <Bar dataKey="revenue" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={30}/>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div className="p-6 border-b border-slate-200"><h3 className="font-bold text-slate-800">Performance Detalhada</h3></div>
+                    <div className="overflow-x-auto max-h-[400px]">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-xs sticky top-0">
+                                <tr>
+                                    <th className="px-6 py-4">Linha</th>
+                                    <th className="px-6 py-4 text-right">Receita</th>
+                                    <th className="px-6 py-4 text-right">Passageiros</th>
+                                    <th className="px-6 py-4 text-right">Ticket Médio</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {linePerformance.map((item, idx) => (
+                                    <tr key={idx} className="hover:bg-slate-50">
+                                        <td className="px-6 py-4 font-bold text-slate-700">{item.name}</td>
+                                        <td className="px-6 py-4 text-right font-bold text-blue-700">{formatMoney(item.revenue)}</td>
+                                        <td className="px-6 py-4 text-right text-slate-600">{item.passengers}</td>
+                                        <td className="px-6 py-4 text-right text-slate-500">{item.passengers > 0 ? formatMoney(item.revenue / item.passengers) : '-'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        )}
+
+      </div>
     </div>
   );
 };

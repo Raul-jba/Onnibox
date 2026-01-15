@@ -1,19 +1,21 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card } from '../components/Layout';
-import { storage, getLocalDate, formatDateDisplay } from '../services/storageService';
+import { storage, getLocalDate, formatDateDisplay, money } from '../services/storageService';
 import { RouteCash, Driver, Vehicle, RouteDef, ExpenseType, Line } from '../types';
 import { GenericTableManager, Column } from '../components/GenericTableManager';
-import { CheckCircle, Lock, DollarSign } from 'lucide-react';
+import { CheckCircle, Lock, DollarSign, Eye, Unlock } from 'lucide-react';
 import { CashExpensesManager } from '../components/CashExpensesManager';
+import { usePermission } from '../hooks/usePermission';
 
 const formatMoney = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
 // Standard Input Classes
-const INPUT_CLASS = "w-full bg-slate-50 border border-slate-300 text-slate-800 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 font-semibold shadow-sm";
-const LABEL_CLASS = "block mb-1 text-xs font-bold text-slate-500 uppercase";
+const INPUT_CLASS = "w-full bg-white border border-slate-300 text-slate-800 text-sm rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 block p-2.5 font-medium shadow-sm transition-all disabled:bg-slate-100 disabled:text-slate-500 disabled:border-slate-200";
+const LABEL_CLASS = "block mb-1.5 text-xs font-bold text-slate-500 uppercase tracking-wide";
 
 export const RouteCashPage: React.FC = () => {
+  const { can } = usePermission();
   const [entries, setEntries] = useState<RouteCash[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -56,9 +58,16 @@ export const RouteCashPage: React.FC = () => {
     if (formData.date > getLocalDate() && !confirm("Data futura. Confirmar?")) return;
     if (!formData.routeId || !formData.driverId || !formData.vehicleId) return alert("Preencha Rota, Veículo e Motorista.");
 
-    const revenue = Number(formData.revenueInformed) || 0;
-    const totalCashExpenses = (formData.expenses || []).reduce((acc, curr) => acc + curr.amount, 0);
-    const handed = Number(formData.cashHanded) || 0;
+    // Prevent negative numbers logic
+    if ((formData.passengers || 0) < 0) return alert("Passageiros não pode ser negativo.");
+    if ((formData.revenueInformed || 0) < 0) return alert("Receita não pode ser negativa.");
+    if ((formData.cashHanded || 0) < 0) return alert("Valor entregue não pode ser negativo.");
+
+    const revenue = money(Number(formData.revenueInformed) || 0);
+    const totalCashExpenses = money((formData.expenses || []).reduce((acc, curr) => acc + curr.amount, 0));
+    const handed = money(Number(formData.cashHanded) || 0);
+    const netCashExpected = money(revenue - totalCashExpenses);
+    const diff = money(handed - netCashExpected);
 
     storage.saveRouteCash({
         ...formData,
@@ -66,9 +75,9 @@ export const RouteCashPage: React.FC = () => {
         passengers: Number(formData.passengers || 0),
         revenueInformed: revenue,
         cashExpenses: totalCashExpenses,
-        netCashExpected: revenue - totalCashExpenses,
+        netCashExpected: netCashExpected,
         cashHanded: handed,
-        diff: handed - (revenue - totalCashExpenses),
+        diff: diff,
         status: formData.status || 'OPEN'
     } as RouteCash);
     
@@ -82,6 +91,22 @@ export const RouteCashPage: React.FC = () => {
       setEntries(storage.getRouteCash());
   }
 
+  const handleUnlock = (entry: RouteCash) => {
+      if(storage.isDayClosed(entry.date)) {
+          alert("Não é possível reabrir. O dia (Fechamento Geral) já está encerrado.");
+          return;
+      }
+      if(confirm("Deseja reabrir este caixa?")) {
+          storage.saveRouteCash({...entry, status: 'OPEN'});
+          setEntries(storage.getRouteCash());
+      }
+  }
+
+  // Check if current form should be read-only (Status CLOSED OR Day Closed)
+  const isLocked = useMemo(() => {
+      return (formData.date && storage.isDayClosed(formData.date)) || formData.status === 'CLOSED';
+  }, [formData.date, formData.status]);
+
   // Form helpers
   const formExp = (formData.expenses || []).reduce((a, b) => a + b.amount, 0);
   const formDiff = (Number(formData.cashHanded)||0) - ((Number(formData.revenueInformed)||0) - formExp);
@@ -92,9 +117,9 @@ export const RouteCashPage: React.FC = () => {
     { header: "Rota", render: (i) => {
         const r = routes.find(x => x.id === i.routeId);
         const l = lines.find(x => x.id === r?.lineId);
-        return <div><div className="font-bold">{l?.name}</div><div className="text-xs text-slate-500">{r?.time} - {r?.destination}</div></div>;
+        return <div><div className="font-bold">{l?.name || 'Linha Excluída'}</div><div className="text-xs text-slate-500">{r?.time || '??:??'} - {r?.destination || 'Destino?'}</div></div>;
     }},
-    { header: "Resp.", render: (i) => <div><div className="font-bold">{drivers.find(d => d.id === i.driverId)?.name}</div><div className="text-xs text-slate-500">{vehicles.find(v => v.id === i.vehicleId)?.plate}</div></div> },
+    { header: "Resp.", render: (i) => <div><div className="font-bold">{drivers.find(d => d.id === i.driverId)?.name || 'Motorista Removido'}</div><div className="text-xs text-slate-500">{vehicles.find(v => v.id === i.vehicleId)?.plate || 'Placa?'}</div></div> },
     { header: "Venda", render: (i) => formatMoney(i.revenueInformed), align: 'right' },
     { header: "Desp.", render: (i) => <span className="text-red-700 font-medium">{i.cashExpenses > 0 ? `-${formatMoney(i.cashExpenses)}` : '-'}</span>, align: 'right' },
     { header: "A Entregar", render: (i) => formatMoney(i.netCashExpected), align: 'right' },
@@ -110,16 +135,44 @@ export const RouteCashPage: React.FC = () => {
       columns={columns}
       onNew={() => { setFormData({ date: getLocalDate(), expenses: [], status: 'OPEN' }); setSelectedLineId(''); setIsModalOpen(true); }}
       onEdit={(i) => { 
-          if(storage.isDayClosed(i.date)) return alert("Dia Fechado.");
           setSelectedLineId(routes.find(r => r.id === i.routeId)?.lineId || '');
-          setFormData(JSON.parse(JSON.stringify(i))); setIsModalOpen(true); 
+          setFormData(JSON.parse(JSON.stringify(i))); 
+          setIsModalOpen(true); 
       }}
-      renderRowActions={(i) => !storage.isDayClosed(i.date) ? (
-        <button onClick={() => handleLock(i)} className={`p-2.5 rounded-lg transition-colors ${i.status === 'CLOSED' ? 'bg-green-600 text-white shadow-sm' : 'bg-slate-100 text-slate-400 hover:bg-green-600 hover:text-white'}`}><CheckCircle size={20}/></button>
-      ) : <Lock size={20} className="text-slate-400 mt-2"/>}
+      
+      // Allow save only if not locked
+      onSave={formData.status === 'CLOSED' ? undefined : handleSave}
+      modalTitle={formData.status === 'CLOSED' ? "Visualizar Caixa (Fechado)" : (formData.id ? "Editar Caixa" : "Novo Caixa")}
+      cancelLabel={formData.status === 'CLOSED' ? "Fechar" : "Cancelar"}
+
+      renderRowActions={(i) => {
+          const dayClosed = storage.isDayClosed(i.date);
+          
+          if (i.status === 'CLOSED') {
+              if (!can('reopen_cash')) {
+                  return (
+                    <div title="Fechado (Apenas Gerente pode reabrir)" className="p-2.5 rounded-lg bg-slate-100 text-slate-300 cursor-not-allowed">
+                        <Lock size={20}/>
+                    </div>
+                  );
+              }
+              return (
+                <button onClick={() => handleUnlock(i)} className={`p-2.5 rounded-lg transition-colors ${dayClosed ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-amber-100 text-amber-600 hover:bg-amber-200'}`} title={dayClosed ? "Dia Fechado (Bloqueado)" : "Reabrir para Correção"}>
+                    {dayClosed ? <Lock size={20}/> : <Unlock size={20}/>}
+                </button>
+              );
+          }
+
+          return (
+            <button onClick={() => handleLock(i)} className="p-2.5 rounded-lg transition-colors bg-slate-100 text-slate-400 hover:bg-green-600 hover:text-white" title="Fechar Caixa Individual">
+                <CheckCircle size={20}/>
+            </button>
+          );
+      }}
+      
       isModalOpen={isModalOpen}
       onCloseModal={() => setIsModalOpen(false)}
-      onSave={handleSave}
+      
       kpiContent={
         <>
             <Card className="p-4 border-l-4 border-blue-600 shadow-sm"><div><div className="text-xs font-bold uppercase text-slate-500">Vendas</div><div className="text-2xl font-bold text-slate-800">{formatMoney(stats.rev)}</div></div></Card>
@@ -137,13 +190,41 @@ export const RouteCashPage: React.FC = () => {
       }
       renderForm={() => (
         <div className="space-y-6">
+            {formData.status === 'CLOSED' && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg flex items-center gap-2 mb-4">
+                    <Lock size={18} />
+                    <span className="text-sm font-bold">Este registro está fechado. Para editar, reabra na listagem principal.</span>
+                </div>
+            )}
+
             {/* Top Section: Route Details */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pb-4 border-b border-slate-100">
-                <div><label className={LABEL_CLASS}>Data</label><input type="date" className={INPUT_CLASS} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} /></div>
-                <div><label className={LABEL_CLASS}>Linha</label><select className={INPUT_CLASS} value={selectedLineId} onChange={e => { setSelectedLineId(e.target.value); setFormData({...formData, routeId: ''}); }}><option value="">Selecione...</option>{lines.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
-                <div><label className={LABEL_CLASS}>Horário</label><select className={INPUT_CLASS} value={formData.routeId || ''} onChange={e => setFormData({...formData, routeId: e.target.value})} disabled={!selectedLineId}><option value="">Selecione...</option>{formSchedules.map(r => <option key={r.id} value={r.id}>{r.time} - {r.destination}</option>)}</select></div>
-                <div><label className={LABEL_CLASS}>Veículo</label><select className={INPUT_CLASS} value={formData.vehicleId || ''} onChange={e => setFormData({...formData, vehicleId: e.target.value})}><option value="">Selecione...</option>{vehicles.filter(v => v.active).map(v => <option key={v.id} value={v.id}>{v.plate}</option>)}</select></div>
-                <div className="md:col-span-4"><label className={LABEL_CLASS}>Motorista</label><select className={INPUT_CLASS} value={formData.driverId || ''} onChange={e => setFormData({...formData, driverId: e.target.value})}><option value="">Selecione...</option>{drivers.filter(d => d.active).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+                <div><label className={LABEL_CLASS}>Data</label><input type="date" className={INPUT_CLASS} value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} disabled={isLocked} /></div>
+                <div><label className={LABEL_CLASS}>Linha</label><select className={INPUT_CLASS} value={selectedLineId} onChange={e => { setSelectedLineId(e.target.value); setFormData({...formData, routeId: ''}); }} disabled={isLocked}><option value="">Selecione...</option>{lines.filter(l => l.active).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
+                <div>
+                    <label className={LABEL_CLASS}>Horário</label>
+                    <select className={INPUT_CLASS} value={formData.routeId || ''} onChange={e => setFormData({...formData, routeId: e.target.value})} disabled={!selectedLineId || isLocked}>
+                        <option value="">Selecione...</option>
+                        {/* Fix: Include inactive routes if it is the currently selected one */}
+                        {formSchedules.map(r => <option key={r.id} value={r.id}>{r.time} - {r.destination}</option>)}
+                    </select>
+                </div>
+                <div>
+                    <label className={LABEL_CLASS}>Veículo</label>
+                    <select className={INPUT_CLASS} value={formData.vehicleId || ''} onChange={e => setFormData({...formData, vehicleId: e.target.value})} disabled={isLocked}>
+                        <option value="">Selecione...</option>
+                        {/* Fix: Filter active OR current selected to prevent silent change */}
+                        {vehicles.filter(v => v.active || v.id === formData.vehicleId).map(v => <option key={v.id} value={v.id}>{v.plate} {!v.active ? '(Inativo)' : ''}</option>)}
+                    </select>
+                </div>
+                <div className="md:col-span-4">
+                    <label className={LABEL_CLASS}>Motorista</label>
+                    <select className={INPUT_CLASS} value={formData.driverId || ''} onChange={e => setFormData({...formData, driverId: e.target.value})} disabled={isLocked}>
+                        <option value="">Selecione...</option>
+                        {/* Fix: Filter active OR current selected to prevent silent change */}
+                        {drivers.filter(d => d.active || d.id === formData.driverId).map(d => <option key={d.id} value={d.id}>{d.name} {!d.active ? '(Inativo)' : ''}</option>)}
+                    </select>
+                </div>
             </div>
             
             {/* Bottom Section: Split Financials and Expenses */}
@@ -155,17 +236,17 @@ export const RouteCashPage: React.FC = () => {
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className={LABEL_CLASS}>Passageiros</label>
-                          <input type="number" className={INPUT_CLASS} value={formData.passengers} onChange={e => setFormData({...formData, passengers: Number(e.target.value)})} />
+                          <input type="number" min="0" onKeyDown={e => e.key === '-' && e.preventDefault()} className={INPUT_CLASS} value={formData.passengers} onChange={e => setFormData({...formData, passengers: Number(e.target.value)})} disabled={isLocked} />
                         </div>
                         <div>
                           <label className={LABEL_CLASS}>Venda Total R$</label>
-                          <input type="number" step="0.01" className={`${INPUT_CLASS} font-bold text-lg text-blue-700`} value={formData.revenueInformed} onChange={e => setFormData({...formData, revenueInformed: Number(e.target.value)})} />
+                          <input type="number" min="0" step="0.01" onKeyDown={e => e.key === '-' && e.preventDefault()} className={`${INPUT_CLASS} font-bold text-lg text-blue-700`} value={formData.revenueInformed} onChange={e => setFormData({...formData, revenueInformed: Number(e.target.value)})} disabled={isLocked} />
                         </div>
                     </div>
                     
                     <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                        <label className="block text-sm font-bold text-green-800 mb-1 uppercase">Dinheiro Entregue R$</label>
-                       <input type="number" step="0.01" className="w-full border border-green-400 focus:border-green-600 focus:ring-green-200 bg-white p-3 rounded-lg font-black text-2xl text-green-700 shadow-inner" value={formData.cashHanded} onChange={e => setFormData({...formData, cashHanded: Number(e.target.value)})} />
+                       <input type="number" min="0" step="0.01" onKeyDown={e => e.key === '-' && e.preventDefault()} className={`w-full border border-green-400 focus:border-green-600 focus:ring-green-200 bg-white p-3 rounded-lg font-black text-2xl text-green-700 shadow-inner ${isLocked ? 'bg-slate-100 text-slate-500 border-slate-300' : ''}`} value={formData.cashHanded} onChange={e => setFormData({...formData, cashHanded: Number(e.target.value)})} disabled={isLocked} />
                     </div>
 
                     <div className={`p-3 rounded-lg font-bold border flex justify-between items-center text-lg shadow-sm ${formDiff < -0.1 ? 'bg-red-50 text-red-700 border-red-200' : 'bg-white text-slate-700 border-slate-200'}`}>
@@ -180,6 +261,7 @@ export const RouteCashPage: React.FC = () => {
                       expenses={formData.expenses || []}
                       onChange={(newExpenses) => setFormData({...formData, expenses: newExpenses})}
                       expenseTypes={expenseTypes}
+                      readOnly={!!isLocked}
                     />
                 </div>
             </div>
