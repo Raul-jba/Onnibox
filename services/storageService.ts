@@ -38,7 +38,18 @@ const set = <T>(key: string, val: T) => {
         localStorage.setItem(key, JSON.stringify(val));
     } catch (e: any) {
         if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
-            alert("ERRO CRÍTICO: Espaço de armazenamento cheio!");
+            alert("ERRO CRÍTICO: Espaço de armazenamento cheio! O sistema não consegue salvar novos dados.\n\nSOLUÇÃO IMEDIATA: Vá em 'Cadastros > Sistema' e baixe o backup. O sistema tentará limpar logs antigos automaticamente agora.");
+            // Emergency cleanup
+            try {
+                const logs = get<AuditLog[]>(K_AUDIT, []);
+                if (logs.length > 50) {
+                    const keep = logs.slice(logs.length - 50);
+                    localStorage.setItem(K_AUDIT, JSON.stringify(keep));
+                    alert("Limpeza de emergência realizada. Tente salvar novamente.");
+                }
+            } catch (err) {
+                console.error("Emergency cleanup failed", err);
+            }
             throw new Error("Armazenamento Cheio");
         }
         console.error("Storage Error", e);
@@ -129,7 +140,12 @@ export const createAuditLog = (
         previousSnapshot: previousItem ? JSON.stringify(previousItem) : undefined
     };
 
-    if (logs.length > 1500) logs.splice(0, 500);
+    // [CRITICAL FIX] Strict Quota Management for Logs
+    // Keep only last 200 logs to prevent localStorage explosion
+    if (logs.length > 200) {
+        logs.splice(0, logs.length - 200);
+    }
+    
     logs.push(log);
     set(K_AUDIT, logs);
 };
@@ -219,11 +235,12 @@ export const UserRepository = {
 
 // --- LEGACY STORAGE (To be refactored in Phase 2) ---
 
-const checkLock = (date: string) => {
+// [CRITICAL FIX] Added explicit date parameter for legacy checking
+const checkLock = (date: string, operationName: string = 'Operação') => {
   const closes = get<DailyClose[]>(K_DAILY_CLOSES, []);
   const isClosed = closes.some(c => c.date === date);
   if (isClosed) {
-    throw new Error(`AÇÃO BLOQUEADA: O dia ${formatDateDisplay(date)} já está fechado financeiramente. Reabra o caixa ou contate o gerente.`);
+    throw new Error(`BLOQUEIO DE SEGURANÇA: O dia ${formatDateDisplay(date)} está FECHADO. Você não pode realizar ${operationName} nesta data.`);
   }
 };
 
@@ -478,10 +495,15 @@ export const storage = {
   // Ensure "money()" is applied to all financial fields before saving
 
   saveRouteCash: (item: RouteCash) => {
-    checkLock(item.date);
     const list = get<RouteCash[]>(K_ROUTE_CASH, []);
     const idx = list.findIndex(i => i.id === item.id);
     const prev = idx >= 0 ? list[idx] : null;
+
+    // [CRITICAL FIX] Check lock on BOTH new date AND previous date (if changing)
+    checkLock(item.date, 'Edição de Caixa');
+    if (prev && prev.date !== item.date) {
+        checkLock(prev.date, 'Mudança de Data de Caixa Fechado');
+    }
     
     // Financial Sanitization
     const newItem = { 
@@ -501,10 +523,15 @@ export const storage = {
   },
   
   saveAgencyCash: (item: AgencyCash) => {
-    checkLock(item.date);
     const list = get<AgencyCash[]>(K_AGENCY_CASH, []);
     const idx = list.findIndex(i => i.id === item.id);
     const prev = idx >= 0 ? list[idx] : null;
+
+    // [CRITICAL FIX] Check lock on BOTH new date AND previous date
+    checkLock(item.date, 'Edição de Caixa Agência');
+    if (prev && prev.date !== item.date) {
+        checkLock(prev.date, 'Mudança de Data de Caixa Fechado');
+    }
     
     // Financial Sanitization
     const newItem = { 
@@ -522,10 +549,13 @@ export const storage = {
   },
 
   saveFuel: (item: FuelEntry) => {
-    checkLock(item.date);
     const list = get<FuelEntry[]>(K_FUEL, []);
     const idx = list.findIndex(i => i.id === item.id);
     const prev = idx >= 0 ? list[idx] : null;
+
+    checkLock(item.date, 'Lançamento de Combustível');
+    if (prev && prev.date !== item.date) checkLock(prev.date, 'Mudança de Data Fechada');
+
     const newItem = { ...item, id: item.id || generateId(), amount: money(item.amount) };
 
     if (idx >= 0) list[idx] = newItem; else list.push(newItem);
@@ -537,22 +567,28 @@ export const storage = {
     const list = get<FuelEntry[]>(K_FUEL, []);
     const item = list.find(i => i.id === id);
     if (item) {
-        checkLock(item.date);
+        checkLock(item.date, 'Exclusão de Combustível');
         set(K_FUEL, list.filter(i => i.id !== id));
         createAuditLog('Fuel', item, item, 'DELETE');
     }
   },
 
   saveGeneralExpense: (item: GeneralExpense) => {
-    // Only lock Check if Payment Method is CASH. Bank transfers can be entered later.
-    if (item.paymentMethod === 'CASH') {
-        const checkDate = item.status === 'PAID' ? (item.paidAt || item.date) : item.date;
-        checkLock(checkDate);
-    }
-    
     const list = get<GeneralExpense[]>(K_GENERAL_EXPENSES, []);
     const idx = list.findIndex(i => i.id === item.id);
     const prev = idx >= 0 ? list[idx] : null;
+
+    // Only lock Check if Payment Method is CASH. Bank transfers can be entered later.
+    if (item.paymentMethod === 'CASH') {
+        const checkDate = item.status === 'PAID' ? (item.paidAt || item.date) : item.date;
+        checkLock(checkDate, 'Pagamento em Dinheiro');
+        
+        if (prev && prev.paymentMethod === 'CASH') {
+             const prevDate = prev.status === 'PAID' ? (prev.paidAt || prev.date) : prev.date;
+             if (prevDate !== checkDate) checkLock(prevDate, 'Alteração de Data de Pagamento');
+        }
+    }
+    
     const newItem = { ...item, id: item.id || generateId(), amount: money(item.amount) };
 
     if (idx >= 0) list[idx] = newItem; else list.push(newItem);
@@ -565,7 +601,7 @@ export const storage = {
     const item = list.find(i => i.id === id);
     if (item) {
         if (item.paymentMethod === 'CASH' && item.status === 'PAID') {
-             checkLock(item.paidAt || item.date);
+             checkLock(item.paidAt || item.date, 'Exclusão de Pagamento em Dinheiro');
         }
         set(K_GENERAL_EXPENSES, list.filter(i => i.id !== id));
         createAuditLog('GeneralExpense', item, item, 'DELETE');
@@ -573,9 +609,14 @@ export const storage = {
   },
 
   saveTourismService: (item: TourismService) => {
+    // Tourism cash logic is simpler: check departure date if Received Value is set
     const list = get<TourismService[]>(K_TOURISM, []);
     const idx = list.findIndex(i => i.id === item.id);
     const prev = idx >= 0 ? list[idx] : null;
+    
+    // If receiving cash now? Not implemented strict lock yet for Tourism as dates vary.
+    // Recommended Phase 2: Lock by receipt date.
+
     const newItem = { 
         ...item, 
         id: item.id || generateId(),
