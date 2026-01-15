@@ -1,11 +1,12 @@
 
 import { 
-  Driver, Vehicle, RouteDef, Agency, ExpenseType, RouteCash, AgencyCash, DailyClose, FuelEntry, Line, CommissionRule, GeneralExpense, TourismService, Client, Supplier, AuditLog, UserProfile, DriverLedgerEntry,
+  Driver, Vehicle, RouteDef, Agency, ExpenseType, RouteCash, AgencyCash, DailyClose, FuelEntry, Line, CommissionRule, GeneralExpense, TourismService, Client, Supplier, AuditLog, UserProfile, DriverLedgerEntry, User,
   MOCK_DRIVERS, MOCK_VEHICLES, MOCK_ROUTES, MOCK_AGENCIES, MOCK_EXPENSE_TYPES, MOCK_LINES, MOCK_COMMISSIONS, MOCK_CLIENTS, MOCK_SUPPLIERS
 } from '../types';
 import { notificationService } from './notificationService';
 
 // Keys
+const K_USERS = 'tf_auth_users'; // NEW: Auth Storage
 const K_DRIVERS = 'tf_drivers';
 const K_VEHICLES = 'tf_vehicles';
 const K_LINES = 'tf_lines';
@@ -79,11 +80,11 @@ const getCurrentUser = (): UserProfile | null => {
     return s ? JSON.parse(s) : null;
 };
 
-const createAuditLog = (
+export const createAuditLog = (
     entity: string, 
     item: any, 
     previousItem: any | null, 
-    actionOverride?: 'CREATE' | 'UPDATE' | 'DELETE' | 'CLOSE' | 'REOPEN'
+    actionOverride?: 'CREATE' | 'UPDATE' | 'DELETE' | 'CLOSE' | 'REOPEN' | 'LOGIN' | 'LOGOUT'
 ) => {
     const user = getCurrentUser();
     const logs = get<AuditLog[]>(K_AUDIT, []);
@@ -117,15 +118,17 @@ const createAuditLog = (
         }
     } else {
         details = action === 'DELETE' ? 'Excluiu registro permanentemente' : details;
+        if (action === 'LOGIN') details = 'Acesso ao sistema';
+        if (action === 'LOGOUT') details = 'Saída do sistema';
     }
 
     const log: AuditLog = {
         id: generateId(),
         timestamp: new Date().toISOString(),
         entity,
-        entityId: item.id,
+        entityId: item.id || 'N/A',
         action: action || 'UPDATE',
-        userId: user?.name || 'Sistema', // Fallback for system actions if any
+        userId: user?.id || 'SYSTEM', 
         userName: user?.name || 'Sistema',
         userRole: user?.role || 'SYSTEM',
         details,
@@ -135,7 +138,6 @@ const createAuditLog = (
 
     // Auto-Truncate Logs to prevent Quota issues (Safety Valve)
     if (logs.length > 1500) {
-        // Remove oldest 500 logs to free up space
         logs.splice(0, 500);
     } 
     
@@ -163,6 +165,20 @@ export const storage = {
     if (!localStorage.getItem(K_SUPPLIERS)) set(K_SUPPLIERS, MOCK_SUPPLIERS);
     if (!localStorage.getItem(K_EXPENSE_TYPES)) set(K_EXPENSE_TYPES, MOCK_EXPENSE_TYPES);
     if (!localStorage.getItem(K_COMMISSIONS)) set(K_COMMISSIONS, MOCK_COMMISSIONS);
+    
+    // Default Admin User Initialization (Vital for new Auth system)
+    const users = get<User[]>(K_USERS, []);
+    if (users.length === 0) {
+        set(K_USERS, [{
+            id: 'admin-001',
+            name: 'Administrador Principal',
+            email: 'admin@onnibox.com',
+            password: 'admin', // Simple default for first access
+            role: 'ADMIN',
+            active: true,
+            createdAt: new Date().toISOString()
+        }]);
+    }
   },
 
   // Generic Getters
@@ -183,10 +199,38 @@ export const storage = {
   getTourismServices: () => get<TourismService[]>(K_TOURISM, []),
   getAuditLogs: () => get<AuditLog[]>(K_AUDIT, []).sort((a,b) => b.timestamp.localeCompare(a.timestamp)),
   getDriverLedger: () => get<DriverLedgerEntry[]>(K_DRIVER_LEDGER, []),
+  getUsers: () => get<User[]>(K_USERS, []),
   
   isDayClosed: (date: string) => {
     const list = get<DailyClose[]>(K_DAILY_CLOSES, []);
     return list.some(c => c.date === date);
+  },
+
+  // --- USER MANAGEMENT ---
+  saveUser: (item: User) => {
+      const list = get<User[]>(K_USERS, []);
+      const idx = list.findIndex(i => i.id === item.id);
+      const prev = idx >= 0 ? list[idx] : null;
+      
+      const newItem = { ...item, id: item.id || generateId() };
+      
+      if (idx >= 0) list[idx] = newItem; else list.push(newItem);
+      set(K_USERS, list);
+      createAuditLog('User', newItem, prev);
+  },
+  
+  deleteUser: (id: string) => {
+      const list = get<User[]>(K_USERS, []);
+      const idx = list.findIndex(i => i.id === id);
+      if (idx >= 0) {
+          const prev = { ...list[idx] };
+          // Logic: Soft delete or Hard delete? 
+          // For users, it's better to deactivate to keep history linkage.
+          // But if requested "delete", we will deactivate.
+          list[idx].active = false; 
+          set(K_USERS, list);
+          createAuditLog('User', list[idx], prev, 'UPDATE'); // Log as update (deactivation)
+      }
   },
 
   // --- REGISTRIES ---
@@ -575,6 +619,7 @@ export const storage = {
   // --- BACKUP SYSTEM ---
   exportData: () => {
     const data = {
+        users: get(K_USERS, []), // Export Users too
         drivers: get(K_DRIVERS, []),
         vehicles: get(K_VEHICLES, []),
         lines: get(K_LINES, []),
@@ -591,10 +636,10 @@ export const storage = {
         generalExpenses: get(K_GENERAL_EXPENSES, []),
         tourism: get(K_TOURISM, []),
         auditLogs: get(K_AUDIT, []),
-        driverLedger: get(K_DRIVER_LEDGER, []), // ADDED
+        driverLedger: get(K_DRIVER_LEDGER, []), 
         meta: {
             exportedAt: new Date().toISOString(),
-            version: '1.2.2', // Security Update
+            version: '1.3.0', // Users Update
             generator: 'OnniBox'
         }
     };
@@ -606,6 +651,7 @@ export const storage = {
           const data = JSON.parse(jsonString);
           if (!data.meta) throw new Error("Arquivo de backup inválido.");
           
+          set(K_USERS, data.users || []); // Import Users
           set(K_DRIVERS, data.drivers || []);
           set(K_VEHICLES, data.vehicles || []);
           set(K_LINES, data.lines || []);
@@ -622,7 +668,7 @@ export const storage = {
           set(K_GENERAL_EXPENSES, data.generalExpenses || []);
           set(K_TOURISM, data.tourism || []);
           set(K_AUDIT, data.auditLogs || []);
-          set(K_DRIVER_LEDGER, data.driverLedger || []); // ADDED
+          set(K_DRIVER_LEDGER, data.driverLedger || []); 
           
           return true;
       } catch (e) {

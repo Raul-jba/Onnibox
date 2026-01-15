@@ -14,6 +14,7 @@ import { TourismPage } from './pages/Tourism';
 import { AuditPage } from './pages/Audit';
 import { SystemEvolutionPage } from './pages/SystemEvolution';
 import { DriverLedgerPage } from './pages/DriverLedger';
+import { UsersPage } from './pages/Users';
 import { LoginPage } from './pages/Login';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastContainer } from './components/ToastContainer';
@@ -47,6 +48,7 @@ const AppRoutes: React.FC = () => {
       <Route path="/audit" element={<PrivateRoute><AuditPage /></PrivateRoute>} />
       <Route path="/evolution" element={<PrivateRoute><SystemEvolutionPage /></PrivateRoute>} />
       <Route path="/driver-ledger" element={<PrivateRoute><DriverLedgerPage /></PrivateRoute>} />
+      <Route path="/users" element={<PrivateRoute><UsersPage /></PrivateRoute>} />
       
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

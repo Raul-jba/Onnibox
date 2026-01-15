@@ -1,495 +1,489 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { Card } from '../components/Layout';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { storage, formatDateDisplay, money } from '../services/storageService';
-import { DailyClose, RouteCash, AgencyCash, GeneralExpense, FuelEntry, Vehicle, Line, RouteDef, Supplier, ExpenseType, TourismService } from '../types';
 import { 
-  Printer, Calendar, TrendingUp, TrendingDown, 
-  ArrowUpRight, ArrowDownRight, Wallet, Receipt, 
-  Lightbulb, Activity, Truck, AlertTriangle, Target, MapPinned, PieChart as PieChartIcon, CheckCircle2, AlertCircle
+  DailyClose, RouteCash, AgencyCash, GeneralExpense, FuelEntry, 
+  Vehicle, Line, RouteDef, Supplier, ExpenseType, TourismService, AuditLog
+} from '../types';
+import { 
+  Printer, FileText, Calendar, Filter, PieChart, 
+  TrendingUp, Truck, Users, DollarSign, AlertCircle, 
+  CheckCircle2, Search, ArrowRight, Download, BarChart3, Receipt
 } from 'lucide-react';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area
-} from 'recharts';
+import { useAuth } from '../contexts/AuthContext';
 
-// --- UTILS ---
+// --- TYPES & INTERFACES ---
+
+type ReportCategory = 'CASH' | 'FINANCIAL' | 'PAYABLES' | 'FLEET' | 'AUDIT';
+
+interface ReportDefinition {
+  id: string;
+  category: ReportCategory;
+  title: string;
+  description: string;
+  orientation: 'portrait' | 'landscape';
+}
+
+interface ReportData {
+  headers: string[];
+  rows: any[][];
+  summary: { label: string; value: string | number; color?: string; subtext?: string }[];
+  footerNote?: string;
+  generatedAt: string;
+}
+
+const REPORT_LIST: ReportDefinition[] = [
+  // 1. CAIXA & FLUXO
+  { id: 'CASH_FLOW_DAILY', category: 'CASH', title: 'Fluxo de Caixa Diário (Analítico)', description: 'Detalhamento cronológico de todas as entradas e saídas de dinheiro.', orientation: 'landscape' },
+  { id: 'CASH_BY_ROUTE', category: 'CASH', title: 'Arrecadação por Linha/Rota', description: 'Consolidado de receitas, passageiros e despesas por rota operacional.', orientation: 'portrait' },
+  
+  // 2. FINANCEIRO GERENCIAL
+  { id: 'DRE_SYNTHETIC', category: 'FINANCIAL', title: 'D.R.E. Gerencial (Competência)', description: 'Demonstrativo de Resultado do Exercício. Receita vs Despesa (Independente do pagamento).', orientation: 'portrait' },
+  { id: 'FINANCIAL_RESULTS', category: 'FINANCIAL', title: 'Resumo Financeiro Consolidado', description: 'Visão macro de receitas, custos e margens.', orientation: 'portrait' },
+  
+  // 3. CONTAS A PAGAR
+  { id: 'PAYABLES_OPEN', category: 'PAYABLES', title: 'Contas a Pagar (Aberto)', description: 'Obrigações financeiras pendentes e vencidas.', orientation: 'portrait' },
+  { id: 'PAYABLES_PAID', category: 'PAYABLES', title: 'Histórico de Pagamentos', description: 'Contas liquidadas no período.', orientation: 'portrait' },
+  
+  // 4. FROTA
+  { id: 'FUEL_EFFICIENCY', category: 'FLEET', title: 'Eficiência de Combustível (Km/L)', description: 'Análise de consumo, custo por km e desempenho da frota.', orientation: 'landscape' },
+  
+  // 5. AUDITORIA
+  { id: 'AUDIT_CLOSING', category: 'AUDIT', title: 'Conferência de Fechamentos', description: 'Auditoria de integridade dos fechamentos de caixa diários.', orientation: 'portrait' },
+];
+
 const formatMoney = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
-const formatPercent = (val: number) => `${val > 0 ? '+' : ''}${val.toFixed(1)}%`;
 
-// --- COMPONENTES AUXILIARES ---
-
-// 1. Card de Insight Inteligente
-const InsightCard = ({ type, title, message, action }: { type: 'success' | 'warning' | 'danger' | 'info', title: string, message: string, action?: string }) => {
-    const styles = {
-        success: 'bg-emerald-50 border-emerald-200 text-emerald-900',
-        warning: 'bg-amber-50 border-amber-200 text-amber-900',
-        danger: 'bg-rose-50 border-rose-200 text-rose-900',
-        info: 'bg-blue-50 border-blue-200 text-blue-900'
-    };
-    const icons = {
-        success: <TrendingUp size={24} className="text-emerald-600"/>,
-        warning: <AlertTriangle size={24} className="text-amber-600"/>,
-        danger: <AlertCircle size={24} className="text-rose-600"/>,
-        info: <Lightbulb size={24} className="text-blue-600"/>
-    };
-
+// --- PRINTABLE COMPONENT ---
+const PrintableReport = React.forwardRef<HTMLDivElement, { 
+    data: ReportData; 
+    definition: ReportDefinition; 
+    dateRange: { start: string, end: string }; 
+    user: string;
+}>(({ data, definition, dateRange, user }, ref) => {
+    
     return (
-        <div className={`p-5 rounded-xl border shadow-sm flex gap-4 items-start animate-in fade-in slide-in-from-bottom-2 ${styles[type]}`}>
-            <div className="shrink-0 mt-1 bg-white/60 p-2 rounded-full backdrop-blur-sm">{icons[type]}</div>
-            <div className="flex-1">
-                <h4 className="font-bold text-sm uppercase tracking-wide opacity-80 mb-1">{title}</h4>
-                <p className="font-semibold text-base leading-relaxed">{message}</p>
-                {action && (
-                    <div className="mt-3 text-sm font-medium bg-white/50 p-2 rounded-lg border border-white/20 flex items-center gap-2">
-                        <Target size={16} /> 
-                        <span>Sugestão: {action}</span>
+        <div ref={ref} className="print-container bg-white p-8 min-h-screen text-slate-900 font-sans">
+            {/* Header A4 */}
+            <div className="border-b-2 border-slate-800 pb-4 mb-6 flex justify-between items-start">
+                <div>
+                    <h1 className="text-2xl font-bold uppercase tracking-tight text-slate-900">{definition.title}</h1>
+                    <p className="text-sm text-slate-500 mt-1">{definition.description}</p>
+                    <div className="mt-2 text-xs font-mono text-slate-600 border border-slate-200 bg-slate-50 px-2 py-1 inline-block rounded">
+                        Período: <strong>{formatDateDisplay(dateRange.start)}</strong> até <strong>{formatDateDisplay(dateRange.end)}</strong>
                     </div>
-                )}
+                </div>
+                <div className="text-right">
+                    <div className="text-xl font-black tracking-widest text-slate-900">ONNIBOX</div>
+                    <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Gestão Inteligente</div>
+                    <div className="text-[10px] text-slate-500 mt-2">Emissão: {data.generatedAt}</div>
+                    <div className="text-[10px] text-slate-500">Por: {user}</div>
+                </div>
+            </div>
+
+            {/* Summary Cards (Top) */}
+            {data.summary.length > 0 && (
+                <div className="grid grid-cols-4 gap-4 mb-8 bg-slate-50 p-4 rounded-lg border border-slate-200 print:bg-white print:border-slate-300">
+                    {data.summary.map((item, idx) => (
+                        <div key={idx} className="border-l-4 pl-3 py-1" style={{ borderColor: item.color || '#cbd5e1' }}>
+                            <div className="text-[10px] uppercase font-bold text-slate-500">{item.label}</div>
+                            <div className="text-lg font-bold text-slate-800">{typeof item.value === 'number' ? formatMoney(item.value) : item.value}</div>
+                            {item.subtext && <div className="text-[10px] text-slate-400 mt-0.5">{item.subtext}</div>}
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Main Table */}
+            <div className="">
+                <table className="w-full text-sm text-left border-collapse">
+                    <thead>
+                        <tr className="bg-slate-100 border-y-2 border-slate-300 text-slate-700 text-xs uppercase tracking-wider print:bg-slate-100">
+                            {data.headers.map((h, i) => (
+                                <th key={i} className={`py-2 px-2 font-bold ${i > 0 ? 'text-right' : 'text-left'}`}>{h}</th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                        {data.rows.length > 0 ? (
+                            data.rows.map((row, rIdx) => {
+                                const isTotalRow = row[0] === 'TOTAL' || row[0] === 'SALDO FINAL' || (typeof row[0] === 'string' && row[0].includes('(=)'));
+                                return (
+                                    <tr key={rIdx} className={`break-inside-avoid ${isTotalRow ? 'bg-slate-100 font-bold border-t-2 border-slate-300' : 'even:bg-slate-50'}`}>
+                                        {row.map((cell, cIdx) => (
+                                            <td key={cIdx} className={`py-1.5 px-2 ${cIdx > 0 ? 'text-right' : 'text-left'} text-xs text-slate-700`}>
+                                                {cell}
+                                            </td>
+                                        ))}
+                                    </tr>
+                                );
+                            })
+                        ) : (
+                            <tr>
+                                <td colSpan={data.headers.length} className="py-12 text-center text-slate-400 italic bg-slate-50 border-b border-slate-200">
+                                    Nenhum registro encontrado para os filtros selecionados.
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Footer Note */}
+            {data.footerNote && (
+                <div className="mt-8 text-xs text-slate-500 italic border-l-2 border-slate-300 pl-3 bg-slate-50 p-2">
+                    <strong>Nota Explicativa:</strong> {data.footerNote}
+                </div>
+            )}
+
+            {/* Print Footer */}
+            <div className="fixed bottom-0 left-0 right-0 hidden print:flex justify-between items-center px-8 py-4 border-t border-slate-300 text-[9px] text-slate-400 bg-white">
+                <div>OnniBox System - Relatório Gerado Automaticamente</div>
+                <div>Este documento é confidencial e para uso interno.</div>
             </div>
         </div>
     );
-};
+});
 
-// 2. Card de KPI com Tendência
-const KpiCard = ({ title, value, subtext, icon: Icon, color, comparisonValue }: any) => {
-  let calculatedTrend = 0;
-  if (comparisonValue !== undefined && comparisonValue !== 0) {
-      calculatedTrend = ((value - comparisonValue) / Math.abs(comparisonValue)) * 100;
-  } else if (comparisonValue === 0 && value > 0) {
-      calculatedTrend = 100;
-  }
-
-  const isPositive = calculatedTrend >= 0;
-  const isNeutral = comparisonValue === undefined;
-
-  return (
-    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition-all relative overflow-hidden group">
-      <div className={`absolute -right-6 -top-6 opacity-5 group-hover:opacity-10 transition-opacity rotate-12 ${color === 'green' ? 'text-emerald-600' : color === 'red' ? 'text-rose-600' : 'text-blue-600'}`}>
-          <Icon size={120} />
-      </div>
-      
-      <div className="flex justify-between items-start mb-4 relative z-10">
-        <div className={`p-3 rounded-xl ${color === 'green' ? 'bg-emerald-50 text-emerald-600' : color === 'red' ? 'bg-rose-50 text-rose-600' : color === 'blue' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
-          <Icon size={24} />
-        </div>
-        {!isNeutral && (
-          <span className={`flex items-center text-xs font-bold px-2.5 py-1 rounded-full border ${isPositive ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'}`}>
-            {isPositive ? <ArrowUpRight size={14} className="mr-1"/> : <ArrowDownRight size={14} className="mr-1"/>}
-            {Math.abs(calculatedTrend).toFixed(1)}%
-          </span>
-        )}
-      </div>
-      <div className="relative z-10">
-        <h3 className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">{title}</h3>
-        <div className="text-3xl font-black text-slate-800 tracking-tight">{typeof value === 'number' ? formatMoney(value) : value}</div>
-        {comparisonValue !== undefined && (
-            <p className="text-xs text-slate-400 mt-2 font-medium">
-                Anterior: {formatMoney(comparisonValue)}
-            </p>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// --- PÁGINA PRINCIPAL ---
+// --- MAIN PAGE COMPONENT ---
 
 export const ReportsPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'profitability' | 'operational'>('overview');
+  const { user } = useAuth();
   
-  // Data State - Padrão: Mês Atual
-  const today = new Date();
-  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
-  const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+  // Filters
+  const [dateRange, setDateRange] = useState({
+    start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+    end: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0],
+  });
+  const [selectedReportId, setSelectedReportId] = useState<string>('DRE_SYNTHETIC');
+  
+  // Data Store
+  const [data, setData] = useState<any>({});
+  
+  const componentRef = useRef<HTMLDivElement>(null);
 
-  const [dateRange, setDateRange] = useState({ start: firstDay, end: lastDay });
-
-  // Dados Brutos
-  const [data, setData] = useState<{
-    routes: RouteCash[],
-    agencies: AgencyCash[],
-    generalExpenses: GeneralExpense[],
-    fuel: FuelEntry[],
-    vehicles: Vehicle[],
-    lines: Line[],
-    routeDefs: RouteDef[],
-    tourism: TourismService[],
-  }>({ routes: [], agencies: [], generalExpenses: [], fuel: [], vehicles: [], lines: [], routeDefs: [], tourism: [] });
-
+  // Load Data
   useEffect(() => {
     setData({
-      routes: storage.getRouteCash(),
-      agencies: storage.getAgencyCash(),
-      generalExpenses: storage.getGeneralExpenses(),
-      fuel: storage.getFuelEntries(),
-      vehicles: storage.getVehicles(),
-      lines: storage.getLines(),
-      routeDefs: storage.getRoutes(),
-      tourism: storage.getTourismServices(),
+        routes: storage.getRouteCash(),
+        agencies: storage.getAgencyCash(),
+        expenses: storage.getGeneralExpenses(),
+        fuel: storage.getFuelEntries(),
+        vehicles: storage.getVehicles(),
+        lines: storage.getLines(),
+        tourism: storage.getTourismServices(),
+        closes: storage.getDailyCloses(),
+        suppliers: storage.getSuppliers(),
+        types: storage.getExpenseTypes()
     });
   }, []);
 
-  // --- LÓGICA DE INTELIGÊNCIA ---
+  // --- REPORT ENGINE ---
+  const reportOutput = useMemo((): ReportData => {
+    if (!data.routes) return { headers: [], rows: [], summary: [], generatedAt: '' }; // Loading
 
-  // 1. Calcular Período Anterior para Comparação
-  const previousPeriod = useMemo(() => {
-      const start = new Date(dateRange.start);
-      const end = new Date(dateRange.end);
-      const diffTime = Math.abs(end.getTime() - start.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; 
-      
-      const prevEnd = new Date(start);
-      prevEnd.setDate(prevEnd.getDate() - 1);
-      
-      const prevStart = new Date(prevEnd);
-      prevStart.setDate(prevStart.getDate() - diffDays + 1);
+    const filterDate = (date: string) => date >= dateRange.start && date <= dateRange.end;
+    
+    // --------------------------------------------------------------------------------
+    // 1. CASH FLOW DAILY (FLUXO DE CAIXA - REGIME DE CAIXA)
+    // --------------------------------------------------------------------------------
+    if (selectedReportId === 'CASH_FLOW_DAILY') {
+        const rows: any[] = [];
+        let runningBalance = 0; 
+        // Note: Real Cash Flow should calculate initial balance, but simplified here starting from 0 or filtered period
+        
+        // Collect all events
+        const events: { date: string, desc: string, in: number, out: number, type: string }[] = [];
 
-      return {
-          start: prevStart.toISOString().split('T')[0],
-          end: prevEnd.toISOString().split('T')[0]
-      };
-  }, [dateRange]);
+        // Inflows
+        data.routes.filter((r:any) => filterDate(r.date)).forEach((r:any) => events.push({ date: r.date, desc: `Receita Rota (Mot. ${r.driverId})`, in: r.cashHanded, out: 0, type: 'ROTA' }));
+        data.agencies.filter((a:any) => filterDate(a.date)).forEach((a:any) => events.push({ date: a.date, desc: `Repasse Agência (${a.agencyId})`, in: a.valueReceived, out: 0, type: 'AGENCIA' }));
+        data.tourism.filter((t:any) => t.receivedValue && filterDate(t.departureDate)).forEach((t:any) => events.push({ date: t.departureDate, desc: `Turismo (${t.destination})`, in: t.receivedValue, out: 0, type: 'TURISMO' }));
 
-  const filterByDate = (items: any[], dateField: string, range: {start: string, end: string}) => {
-      return items.filter(i => i[dateField] >= range.start && i[dateField] <= range.end);
+        // Outflows (Expenses PAID in Cash or Bank within the period)
+        // General Expenses
+        data.expenses.filter((e:any) => e.status === 'PAID' && filterDate(e.paidAt || e.date)).forEach((e:any) => events.push({ date: e.paidAt || e.date, desc: `Despesa: ${e.description}`, in: 0, out: e.amount, type: 'DESPESA' }));
+        
+        // Sort Chronologically
+        events.sort((a,b) => a.date.localeCompare(b.date));
+
+        let totalIn = 0; 
+        let totalOut = 0;
+
+        events.forEach(e => {
+            runningBalance += (e.in - e.out);
+            totalIn += e.in;
+            totalOut += e.out;
+            rows.push([
+                formatDateDisplay(e.date),
+                e.desc,
+                e.type,
+                e.in > 0 ? formatMoney(e.in) : '-',
+                e.out > 0 ? <span className="text-red-700">-{formatMoney(e.out)}</span> : '-',
+                <span className="font-bold">{formatMoney(runningBalance)}</span>
+            ]);
+        });
+
+        rows.push(['TOTAL', 'Resumo do Período', '', formatMoney(totalIn), formatMoney(totalOut), formatMoney(totalIn - totalOut)]);
+
+        return {
+            headers: ['Data', 'Descrição', 'Categoria', 'Entradas', 'Saídas', 'Saldo Acumulado'],
+            rows,
+            summary: [
+                { label: 'Total Entradas', value: totalIn, color: '#16a34a' },
+                { label: 'Total Saídas', value: totalOut, color: '#dc2626' },
+                { label: 'Resultado de Caixa', value: totalIn - totalOut, color: '#2563eb', subtext: 'Superávit/Déficit do Período' },
+            ],
+            footerNote: "Este relatório demonstra a movimentação financeira efetiva (Regime de Caixa). Considera apenas valores recebidos ou pagos nas datas indicadas.",
+            generatedAt: new Date().toLocaleString()
+        };
+    }
+
+    // --------------------------------------------------------------------------------
+    // 2. DRE SYNTHETIC (REGIME DE COMPETÊNCIA)
+    // --------------------------------------------------------------------------------
+    if (selectedReportId === 'DRE_SYNTHETIC') {
+        // Receita Operacional Bruta
+        const revRoutes = data.routes.filter((r: any) => filterDate(r.date)).reduce((a: number, b: any) => a + b.revenueInformed, 0);
+        const revAgencies = data.agencies.filter((a: any) => filterDate(a.date)).reduce((a: number, b: any) => a + b.valueInformed, 0);
+        const revTourism = data.tourism.filter((t: any) => filterDate(t.departureDate) && t.status !== 'CANCELED').reduce((a: number, b: any) => a + b.contractValue, 0);
+        const totalRev = revRoutes + revAgencies + revTourism;
+
+        // Custos Variáveis (Diretos)
+        const costFuel = data.fuel.filter((f: any) => filterDate(f.date)).reduce((a: number, b: any) => a + b.amount, 0);
+        const costRouteExp = data.routes.filter((r: any) => filterDate(r.date)).reduce((a: number, b: any) => a + b.cashExpenses, 0);
+        // Estimate Agency Commissions (Using approx based on received vs informed diff if detailed not avail)
+        // Better: Loop agencies and calc commission based on rule would be ideal, but here we use the diff logic or assume standard.
+        // Simplified: ValueInformed - ValueReceived - Expenses ~= Commission
+        // However, in our system: Commission is implicit. Let's use `valueInformed * 0.10` as estimate or the gaps.
+        // Let's use the explicit Agency Expenses field + Commissions
+        const costAgencyExp = data.agencies.filter((a: any) => filterDate(a.date)).reduce((a: number, b: any) => {
+             const exps = (b.expenses || []).reduce((s:number, e:any) => s+e.amount, 0);
+             // Commission estimation: ValueInformed - ValueReceived - Expenses (approx)
+             // In a real scenario, we should store commission value explicitly.
+             const comm = Math.max(0, b.valueInformed - b.valueReceived - exps); 
+             return a + exps + comm;
+        }, 0);
+        
+        const totalVariable = costFuel + costRouteExp + costAgencyExp;
+        const contribMargin = totalRev - totalVariable;
+
+        // Despesas Fixas (Operacionais / Administrativas)
+        // General Expenses filtered by DATE (Accrual basis), regardless of payment status
+        const fixedExp = data.expenses.filter((e: any) => filterDate(e.date)).reduce((a: number, b: any) => a + b.amount, 0);
+
+        // EBITDA (Simplificado)
+        const ebitda = contribMargin - fixedExp;
+
+        const rows = [
+            ['(+) RECEITA BRUTA OPERACIONAL', formatMoney(totalRev), '100%'],
+            ['   Receita de Linhas', formatMoney(revRoutes), totalRev ? ((revRoutes/totalRev)*100).toFixed(1)+'%' : '0%'],
+            ['   Receita de Agências', formatMoney(revAgencies), totalRev ? ((revAgencies/totalRev)*100).toFixed(1)+'%' : '0%'],
+            ['   Receita de Turismo', formatMoney(revTourism), totalRev ? ((revTourism/totalRev)*100).toFixed(1)+'%' : '0%'],
+            ['', '', ''],
+            ['(-) CUSTOS VARIÁVEIS', formatMoney(totalVariable), totalRev ? ((totalVariable/totalRev)*100).toFixed(1)+'%' : '0%'],
+            ['   Combustível', formatMoney(costFuel), totalRev ? ((costFuel/totalRev)*100).toFixed(1)+'%' : '0%'],
+            ['   Despesas de Viagem', formatMoney(costRouteExp), totalRev ? ((costRouteExp/totalRev)*100).toFixed(1)+'%' : '0%'],
+            ['   Comissões e Taxas', formatMoney(costAgencyExp), totalRev ? ((costAgencyExp/totalRev)*100).toFixed(1)+'%' : '0%'],
+            ['', '', ''],
+            ['(=) MARGEM DE CONTRIBUIÇÃO', formatMoney(contribMargin), totalRev ? ((contribMargin/totalRev)*100).toFixed(1)+'%' : '0%'],
+            ['', '', ''],
+            ['(-) DESPESAS OPERACIONAIS (FIXAS)', formatMoney(fixedExp), totalRev ? ((fixedExp/totalRev)*100).toFixed(1)+'%' : '0%'],
+            ['   Despesas Gerais / Adm', formatMoney(fixedExp), '-'],
+            ['', '', ''],
+            ['(=) RESULTADO LÍQUIDO (EBITDA)', formatMoney(ebitda), totalRev ? ((ebitda/totalRev)*100).toFixed(1)+'%' : '0%']
+        ];
+
+        return {
+            headers: ['Descrição da Conta', 'Valor R$', 'Análise Vertical %'],
+            rows,
+            summary: [
+                { label: 'Faturamento Bruto', value: totalRev, color: '#1e293b' },
+                { label: 'Custos Totais', value: totalVariable + fixedExp, color: '#dc2626' },
+                { label: 'Resultado Líquido', value: ebitda, color: ebitda >= 0 ? '#16a34a' : '#dc2626', subtext: totalRev > 0 ? `Margem Líquida: ${((ebitda/totalRev)*100).toFixed(1)}%` : '' },
+            ],
+            footerNote: "Este relatório segue o Regime de Competência (Data do Fato Gerador). Receitas e Despesas são contabilizadas na data de emissão/vencimento, independente do pagamento efetivo.",
+            generatedAt: new Date().toLocaleString()
+        };
+    }
+
+    // --------------------------------------------------------------------------------
+    // 3. FUEL EFFICIENCY
+    // --------------------------------------------------------------------------------
+    if (selectedReportId === 'FUEL_EFFICIENCY') {
+        const rows: any[] = [];
+        const vehicleStats: Record<string, { liters: number, amount: number, dist: number, entries: number }> = {};
+        
+        // Sort by vehicle and date
+        const entries = data.fuel.filter((f: any) => filterDate(f.date)).sort((a:any,b:any) => a.date.localeCompare(b.date) || a.mileage - b.mileage);
+        
+        // Advanced Algorithm: Calculate distance based on previous entry for same vehicle
+        // Note: This only works perfectly if we have the previous entry even if it's outside the date range.
+        // For simplicity in this mock, we calculate distance between entries IN range.
+        
+        const vehicles = data.vehicles;
+        
+        vehicles.forEach((v: Vehicle) => {
+            const vEntries = entries.filter((e:any) => e.vehicleId === v.id);
+            if (vEntries.length > 0) {
+                let totalLiters = 0;
+                let totalAmount = 0;
+                let totalDist = 0;
+
+                // We need at least 2 entries or start mileage to calc distance correctly
+                // If we have only 1 entry in range, we can't determine distance unless we look back.
+                // Simplified: Sum liters and amount. Distance = Last Mileage - First Mileage (Rough approx)
+                
+                vEntries.forEach(e => {
+                    totalLiters += e.liters;
+                    totalAmount += e.amount;
+                });
+                
+                // Distance calc
+                if (vEntries.length > 1) {
+                    totalDist = vEntries[vEntries.length-1].mileage - vEntries[0].mileage;
+                } else if (vEntries.length === 1 && v.initialMileage) {
+                    totalDist = Math.max(0, vEntries[0].mileage - v.initialMileage);
+                }
+
+                vehicleStats[v.id] = { liters: totalLiters, amount: totalAmount, dist: totalDist, entries: vEntries.length };
+            }
+        });
+
+        Object.entries(vehicleStats).forEach(([vid, stat]) => {
+            const vehicle = vehicles.find((v:any) => v.id === vid);
+            const kmL = stat.dist > 0 && stat.liters > 0 ? (stat.dist / stat.liters) : 0;
+            const costKm = stat.dist > 0 ? (stat.amount / stat.dist) : 0;
+            
+            rows.push([
+                vehicle?.plate || vid,
+                vehicle?.description || '-',
+                stat.entries,
+                stat.dist.toLocaleString() + ' km',
+                stat.liters.toFixed(1) + ' L',
+                formatMoney(stat.amount),
+                <span className={kmL < 2.5 ? 'text-red-600 font-bold' : 'text-green-700 font-bold'}>{kmL.toFixed(2)} km/L</span>,
+                'R$ ' + costKm.toFixed(2)
+            ]);
+        });
+
+        const totalCost = Object.values(vehicleStats).reduce((a,b) => a + b.amount, 0);
+        const totalLiters = Object.values(vehicleStats).reduce((a,b) => a + b.liters, 0);
+
+        return {
+            headers: ['Placa', 'Modelo', 'Abastecimentos', 'Distância Apurada', 'Consumo (L)', 'Custo Total', 'Média Km/L', 'Custo R$/Km'],
+            rows,
+            summary: [
+                { label: 'Gasto Total Combustível', value: totalCost, color: '#f59e0b' },
+                { label: 'Volume Consumido', value: totalLiters.toFixed(1) + ' L', color: '#64748b' },
+                { label: 'Preço Médio / Litro', value: totalLiters ? formatMoney(totalCost/totalLiters) : 'R$ 0,00', color: '#6366f1' }
+            ],
+            footerNote: "A média Km/L é calculada com base na diferença de hodômetro entre o primeiro e o último abastecimento do período selecionado. Veículos com apenas 1 abastecimento podem apresentar distorções se o KM inicial não estiver cadastrado.",
+            generatedAt: new Date().toLocaleString()
+        };
+    }
+
+    // --------------------------------------------------------------------------------
+    // 4. PAYABLES (CONTAS A PAGAR)
+    // --------------------------------------------------------------------------------
+    if (selectedReportId === 'PAYABLES_OPEN' || selectedReportId === 'PAYABLES_PAID') {
+        const isPaidMode = selectedReportId === 'PAYABLES_PAID';
+        const items = data.expenses.filter((e: GeneralExpense) => {
+            // Logic:
+            // If report is OPEN: Show PENDING items due in range OR OVERDUE items (due before end range)
+            // If report is PAID: Show PAID items paid in range
+            if (isPaidMode) {
+                const pDate = e.paidAt || e.date;
+                return e.status === 'PAID' && pDate >= dateRange.start && pDate <= dateRange.end;
+            } else {
+                return e.status === 'PENDING' && e.date <= dateRange.end; // Show all up to end date (including past overdue)
+            }
+        }).sort((a: GeneralExpense, b: GeneralExpense) => a.date.localeCompare(b.date));
+
+        const total = items.reduce((a: number, b: GeneralExpense) => a + b.amount, 0);
+        const supplierMap = new Map(data.suppliers.map((s:any) => [s.id, s.name]));
+        const typeMap = new Map(data.types.map((t:any) => [t.id, t.name]));
+
+        const rows = items.map((i: GeneralExpense) => [
+            formatDateDisplay(i.date),
+            isPaidMode ? formatDateDisplay(i.paidAt!) : (i.date < new Date().toISOString().split('T')[0] ? <span className="text-red-600 font-bold">VENCIDA</span> : 'A Vencer'),
+            i.description,
+            i.supplierId ? supplierMap.get(i.supplierId) : '-',
+            typeMap.get(i.typeId) || 'Geral',
+            formatMoney(i.amount)
+        ]);
+        
+        rows.push(['TOTAL', '', '', '', '', formatMoney(total)]);
+
+        return {
+            headers: ['Vencimento', 'Status/Pagto', 'Descrição', 'Fornecedor', 'Categoria', 'Valor'],
+            rows,
+            summary: [
+                { label: isPaidMode ? 'Total Pago' : 'Total a Pagar', value: total, color: isPaidMode ? '#16a34a' : '#dc2626' },
+                { label: 'Qtd. Títulos', value: items.length }
+            ],
+            generatedAt: new Date().toLocaleString()
+        };
+    }
+
+    // Default Empty
+    return { headers: [], rows: [], summary: [], generatedAt: '' };
+
+  }, [selectedReportId, dateRange, data]);
+
+
+  const handlePrint = () => {
+    window.print();
   };
 
-  // 2. Métricas Financeiras (DRE) - FIXED: Precision Math with money()
-  const financialMetrics = useMemo(() => {
-      const calculateMetrics = (range: {start: string, end: string}) => {
-          // Receita
-          const routesRev = filterByDate(data.routes, 'date', range).reduce((a,b) => money(a + b.revenueInformed), 0);
-          const agenciesRev = filterByDate(data.agencies, 'date', range).reduce((a,b) => money(a + b.valueInformed), 0);
-          const tourismRev = filterByDate(data.tourism, 'departureDate', range).filter(t => t.status !== 'CANCELED' && t.status !== 'REJECTED').reduce((a,b) => money(a + b.contractValue), 0);
-          const totalRevenue = money(routesRev + agenciesRev + tourismRev);
-
-          // Custos Variáveis
-          const fuelCost = filterByDate(data.fuel, 'date', range).reduce((a,b) => money(a + b.amount), 0);
-          const routeExp = filterByDate(data.routes, 'date', range).reduce((a,b) => money(a + b.cashExpenses), 0);
-          const agencyExp = filterByDate(data.agencies, 'date', range).reduce((a,b) => money(a + (b.expenses || []).reduce((s,e)=>money(s+e.amount),0)), 0);
-          const tourismExp = filterByDate(data.tourism, 'departureDate', range).reduce((a,b) => money(a + (b.expenses || []).reduce((s,e)=>money(s+e.amount),0)), 0);
-          const variableCosts = money(fuelCost + routeExp + agencyExp + tourismExp);
-
-          // Despesas Fixas
-          const generalExp = filterByDate(data.generalExpenses, 'date', range).reduce((a,b) => money(a + b.amount), 0);
-
-          // Resultados
-          const contributionMargin = money(totalRevenue - variableCosts);
-          const netResult = money(contributionMargin - generalExp);
-
-          return { totalRevenue, variableCosts, generalExp, netResult, contributionMargin, fuelCost };
-      };
-
-      return { 
-          current: calculateMetrics(dateRange), 
-          previous: calculateMetrics(previousPeriod) 
-      };
-  }, [data, dateRange, previousPeriod]);
-
-  // 3. Lucratividade por Veículo (Ranking)
-  const fleetProfitability = useMemo(() => {
-      const activeVehicles = data.vehicles.filter(v => v.active);
-      return activeVehicles.map(v => {
-          // Receitas
-          const vRoutes = filterByDate(data.routes, 'date', dateRange).filter(r => r.vehicleId === v.id);
-          const vTourism = filterByDate(data.tourism, 'departureDate', dateRange).filter(t => t.vehicleId === v.id && t.status !== 'CANCELED');
-          const totalRev = money(vRoutes.reduce((a,b) => money(a + b.revenueInformed), 0) + vTourism.reduce((a,b) => money(a + b.contractValue), 0));
-
-          // Custos Específicos
-          const vFuel = filterByDate(data.fuel, 'date', dateRange).filter(f => f.vehicleId === v.id);
-          const costFuel = vFuel.reduce((a,b) => money(a + b.amount), 0);
-          const costOther = money(vRoutes.reduce((a,b) => money(a + b.cashExpenses), 0) + vTourism.reduce((a,b) => money(a + (b.expenses||[]).reduce((s,e)=>money(s+e.amount),0)), 0));
-          
-          const margin = money(totalRev - (costFuel + costOther));
-          
-          return {
-              id: v.id,
-              plate: v.plate,
-              desc: v.description,
-              revenue: totalRev,
-              fuel: costFuel,
-              margin: margin,
-              marginPct: totalRev > 0 ? (margin / totalRev) * 100 : 0
-          };
-      }).sort((a,b) => b.margin - a.margin);
-  }, [data, dateRange]);
-
-  // 4. Performance das Linhas
-  const linePerformance = useMemo(() => {
-      const filteredRoutes = filterByDate(data.routes, 'date', dateRange);
-      const byLine: Record<string, { name: string, revenue: number, passengers: number }> = {};
-      
-      filteredRoutes.forEach(r => {
-          const def = data.routeDefs.find(rd => rd.id === r.routeId);
-          const line = data.lines.find(l => l.id === def?.lineId);
-          const name = line?.name || 'Desconhecida';
-          
-          if (!byLine[name]) byLine[name] = { name, revenue: 0, passengers: 0 };
-          byLine[name].revenue = money(byLine[name].revenue + r.revenueInformed);
-          byLine[name].passengers += r.passengers;
-      });
-
-      return Object.values(byLine).sort((a,b) => b.revenue - a.revenue);
-  }, [data, dateRange]);
-
-  // --- MOTOR DE INSIGHTS (IA SIMBÓLICA) ---
-  const insights = useMemo(() => {
-      const list: { type: 'success'|'warning'|'danger'|'info', title: string, message: string, action?: string }[] = [];
-      const { current, previous } = financialMetrics;
-
-      // Insight 1: Tendência de Receita e Prejuízo
-      if (current.netResult < 0) {
-          list.push({ 
-              type: 'danger', 
-              title: 'Alerta de Prejuízo Operacional', 
-              message: `A operação está com saldo negativo de ${formatMoney(current.netResult)}. As despesas superaram as receitas.`,
-              action: 'Revise custos fixos e corte gastos não essenciais imediatamente.' 
-          });
-      } else if (current.totalRevenue > previous.totalRevenue * 1.15) {
-          list.push({ 
-              type: 'success', 
-              title: 'Crescimento de Receita', 
-              message: `A receita aumentou ${formatPercent(((current.totalRevenue - previous.totalRevenue)/previous.totalRevenue)*100)} comparado ao período anterior.`,
-              action: 'Identifique qual linha puxou esse crescimento e considere aumentar horários.' 
-          });
-      } else if (current.totalRevenue < previous.totalRevenue * 0.9 && previous.totalRevenue > 0) {
-          list.push({
-              type: 'warning',
-              title: 'Queda na Arrecadação',
-              message: `Houve uma retração de ${formatPercent(((current.totalRevenue - previous.totalRevenue)/previous.totalRevenue)*100)} nas vendas.`,
-              action: 'Verifique se houve perda de viagens ou redução na demanda de passageiros.'
-          });
-      }
-
-      // Insight 2: Anomalia de Combustível (Regra de Ouro: Max 35-40% da Receita)
-      const fuelRatio = current.totalRevenue > 0 ? (current.fuelCost / current.totalRevenue) : 0;
-      if (fuelRatio > 0.45) {
-          list.push({ 
-              type: 'danger', 
-              title: 'Custo de Combustível Crítico', 
-              message: `O diesel está consumindo ${(fuelRatio*100).toFixed(1)}% de toda a sua receita. (Ideal de mercado: < 35%)`,
-              action: 'Agende manutenção da frota ou verifique a condução dos motoristas.'
-          });
-      }
-
-      // Insight 3: Veículo "Ladrão de Lucro"
-      const loserVehicle = fleetProfitability.find(v => v.margin < 0 && v.revenue > 0);
-      if (loserVehicle) {
-          list.push({ 
-              type: 'warning', 
-              title: 'Veículo Deficitário Identificado', 
-              message: `O ônibus ${loserVehicle.plate} (${loserVehicle.desc}) está gerando prejuízo de ${formatMoney(loserVehicle.margin)}.`,
-              action: 'Avalie se este veículo está consumindo muito combustível ou rodando em linhas de baixa demanda.' 
-          });
-      }
-
-      // Insight 4: Campeão de Vendas
-      const topVehicle = fleetProfitability[0];
-      if (topVehicle && topVehicle.margin > 0) {
-           list.push({ 
-              type: 'info', 
-              title: 'Destaque da Frota', 
-              message: `O veículo ${topVehicle.plate} é o mais rentável, gerando ${formatMoney(topVehicle.margin)} de lucro líquido.`,
-          });
-      }
-
-      return list.slice(0, 4); // Limitar aos 4 mais importantes
-  }, [financialMetrics, fleetProfitability]);
-
-
   return (
-    <div className="pb-12 space-y-8">
-      {/* HEADER */}
-      <div className="bg-white border-b border-slate-200 px-6 py-5 sticky top-0 z-20 shadow-sm">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-            <div>
-              <h2 className="text-2xl font-extrabold text-slate-800 flex items-center gap-2">
-                  <Activity className="text-blue-600"/> Inteligência Gerencial
-              </h2>
-              <p className="text-slate-500 text-sm">Painel de decisão estratégica e análise financeira.</p>
-            </div>
+    <div className="pb-12 space-y-6 h-[calc(100vh-80px)] flex flex-col">
+      
+      {/* HEADER & FILTERS (Hidden on Print) */}
+      <div className="no-print bg-white p-4 rounded-xl border border-slate-200 shadow-sm shrink-0">
+          <div className="flex flex-col xl:flex-row justify-between xl:items-center gap-4">
+              
+              {/* Report Selector */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 xl:pb-0 custom-scrollbar">
+                  {REPORT_LIST.map(rep => (
+                      <button 
+                        key={rep.id}
+                        onClick={() => setSelectedReportId(rep.id)}
+                        className={`whitespace-nowrap px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide border transition-all ${selectedReportId === rep.id ? 'bg-blue-600 text-white border-blue-700 shadow-md' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                      >
+                          {rep.title}
+                      </button>
+                  ))}
+              </div>
 
-            <div className="flex bg-slate-100 p-1 rounded-lg">
-                 {[
-                   { id: 'overview', label: 'Visão Geral (DRE)' },
-                   { id: 'profitability', label: 'Lucratividade da Frota' },
-                   { id: 'operational', label: 'Linhas e Rotas' },
-                 ].map(tab => (
-                   <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id as any)}
-                      className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${activeTab === tab.id ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                   >
-                      {tab.label}
-                   </button>
-                 ))}
-            </div>
-
-            <div className="flex items-center gap-2 bg-white border border-slate-300 rounded-lg p-1.5 px-3 shadow-sm">
-              <Calendar size={16} className="text-slate-400"/>
-              <input type="date" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none w-32"/>
-              <span className="text-slate-300">até</span>
-              <input type="date" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none w-32"/>
-            </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-6">
-        
-        {/* SECTION: SMART INSIGHTS */}
-        <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-4">
-            {insights.length > 0 ? insights.map((insight, idx) => (
-                <InsightCard key={idx} {...insight} />
-            )) : (
-                <div className="col-span-2 bg-slate-50 p-6 rounded-xl border border-slate-200 text-center flex flex-col items-center justify-center text-slate-500">
-                    <CheckCircle2 size={32} className="mb-2 text-slate-400"/>
-                    <p className="font-medium">Nenhuma anomalia crítica detectada neste período.</p>
-                    <p className="text-sm">Sua operação está rodando dentro dos padrões esperados.</p>
-                </div>
-            )}
-        </div>
-
-        {/* TAB 1: OVERVIEW (DRE) */}
-        {activeTab === 'overview' && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <KpiCard title="Receita Bruta" value={financialMetrics.current.totalRevenue} comparisonValue={financialMetrics.previous.totalRevenue} icon={Wallet} color="blue"/>
-                <KpiCard title="Custos Variáveis" value={financialMetrics.current.variableCosts} comparisonValue={financialMetrics.previous.variableCosts} subtext="Combustível + Viagens" icon={TrendingDown} color="red"/>
-                <KpiCard title="Despesas Fixas" value={financialMetrics.current.generalExp} comparisonValue={financialMetrics.previous.generalExp} subtext="Administrativo / Manutenção" icon={Receipt} color="purple"/>
-                <KpiCard title="Resultado Líquido" value={financialMetrics.current.netResult} comparisonValue={financialMetrics.previous.netResult} subtext="Lucro/Prejuízo Real" icon={Target} color={financialMetrics.current.netResult >= 0 ? 'green' : 'red'}/>
-             </div>
-
-             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                 <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                    <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2"><PieChartIcon size={18}/> Estrutura de Resultados (Waterfall)</h3>
-                    <div className="h-72 w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={[
-                                { name: 'Receita', valor: financialMetrics.current.totalRevenue, fill: '#2563eb' },
-                                { name: 'Custos Var.', valor: financialMetrics.current.variableCosts, fill: '#f59e0b' },
-                                { name: 'Desp. Fixas', valor: financialMetrics.current.generalExp, fill: '#ef4444' },
-                                { name: 'Lucro Líq.', valor: financialMetrics.current.netResult, fill: financialMetrics.current.netResult >= 0 ? '#10b981' : '#b91c1c' },
-                            ]} layout="vertical" margin={{ left: 20 }}>
-                                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false}/>
-                                <XAxis type="number" tickFormatter={(val) => `R$${val/1000}k`}/>
-                                <YAxis dataKey="name" type="category" width={80} style={{fontWeight: 'bold', fontSize: '12px'}}/>
-                                <Tooltip cursor={{fill: 'transparent'}} formatter={(val: number) => formatMoney(val)}/>
-                                <Bar dataKey="valor" radius={[0, 4, 4, 0]} barSize={40}/>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                 </div>
-
-                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="bg-slate-50 p-4 border-b border-slate-200"><h3 className="font-bold text-slate-800">D.R.E. Sintético</h3></div>
-                    <table className="w-full text-sm">
-                        <tbody className="divide-y divide-slate-100">
-                            <tr><td className="px-4 py-3 font-medium text-slate-600">(=) Receita Bruta</td><td className="px-4 py-3 text-right font-bold text-blue-700">{formatMoney(financialMetrics.current.totalRevenue)}</td></tr>
-                            <tr className="bg-slate-50/50"><td className="px-4 py-3 font-medium text-slate-600">(-) Combustível</td><td className="px-4 py-3 text-right text-red-600">{formatMoney(financialMetrics.current.fuelCost)}</td></tr>
-                            <tr><td className="px-4 py-3 font-medium text-slate-600">(-) Desp. Variáveis</td><td className="px-4 py-3 text-right text-red-600">{formatMoney(financialMetrics.current.variableCosts - financialMetrics.current.fuelCost)}</td></tr>
-                            <tr className="bg-blue-50 border-t border-blue-100"><td className="px-4 py-3 font-bold text-blue-900">(=) Margem Contrib.</td><td className="px-4 py-3 text-right font-bold text-blue-900">{formatMoney(financialMetrics.current.contributionMargin)}</td></tr>
-                            <tr><td className="px-4 py-3 font-medium text-slate-600">(-) Desp. Fixas</td><td className="px-4 py-3 text-right text-red-600">{formatMoney(financialMetrics.current.generalExp)}</td></tr>
-                            <tr className={`border-t-2 ${financialMetrics.current.netResult >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                                <td className="px-4 py-4 font-extrabold text-slate-800 text-lg">RESULTADO</td>
-                                <td className={`px-4 py-4 text-right font-extrabold text-lg ${financialMetrics.current.netResult >= 0 ? 'text-green-700' : 'text-red-700'}`}>{formatMoney(financialMetrics.current.netResult)}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                 </div>
-             </div>
+              {/* Date & Print */}
+              <div className="flex items-center gap-3 bg-slate-100 p-1.5 rounded-lg border border-slate-200">
+                  <div className="flex items-center gap-2 px-2">
+                      <Calendar size={16} className="text-slate-500"/>
+                      <input type="date" className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none w-28" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} />
+                      <span className="text-slate-400">até</span>
+                      <input type="date" className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none w-28" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} />
+                  </div>
+                  <button onClick={handlePrint} className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-md font-bold text-sm hover:bg-slate-900 shadow-sm transition-all">
+                      <Printer size={16}/> Imprimir / PDF
+                  </button>
+              </div>
           </div>
-        )}
-
-        {/* TAB 2: PROFITABILITY */}
-        {activeTab === 'profitability' && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="p-6 border-b border-slate-200">
-                        <h3 className="font-bold text-slate-800 flex items-center gap-2"><Truck size={20}/> Lucratividade Real por Veículo</h3>
-                        <p className="text-sm text-slate-500 mt-1">Margem calculada subtraindo o combustível e despesas específicas da receita gerada pelo veículo.</p>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm text-left">
-                            <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-xs">
-                                <tr>
-                                    <th className="px-6 py-4">Veículo</th>
-                                    <th className="px-6 py-4 text-right">Receita</th>
-                                    <th className="px-6 py-4 text-right">Combustível</th>
-                                    <th className="px-6 py-4 text-right">Margem R$</th>
-                                    <th className="px-6 py-4 text-center">Margem %</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {fleetProfitability.map((item) => (
-                                    <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                                        <td className="px-6 py-4">
-                                            <div className="font-bold text-slate-800">{item.plate}</div>
-                                            <div className="text-xs text-slate-500">{item.desc}</div>
-                                        </td>
-                                        <td className="px-6 py-4 text-right font-medium text-blue-700">{formatMoney(item.revenue)}</td>
-                                        <td className="px-6 py-4 text-right text-red-600">{formatMoney(item.fuel)}</td>
-                                        <td className={`px-6 py-4 text-right font-bold ${item.margin >= 0 ? 'text-green-700' : 'text-red-700'}`}>{formatMoney(item.margin)}</td>
-                                        <td className="px-6 py-4 text-center">
-                                            <span className={`px-2 py-1 rounded text-xs font-bold ${item.marginPct >= 20 ? 'bg-green-100 text-green-700' : item.marginPct > 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
-                                                {formatPercent(item.marginPct)}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {/* TAB 3: OPERATIONAL */}
-        {activeTab === 'operational' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                    <h3 className="font-bold text-slate-800 mb-4">Top 5 Linhas (Receita)</h3>
-                    <div className="h-80 w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={linePerformance.slice(0,5)} layout="vertical" margin={{ left: 10 }}>
-                                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false}/>
-                                <XAxis type="number" hide/>
-                                <YAxis dataKey="name" type="category" width={100} style={{fontSize: '11px', fontWeight: 'bold'}}/>
-                                <Tooltip formatter={(val: number) => formatMoney(val)} cursor={{fill: 'transparent'}}/>
-                                <Bar dataKey="revenue" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={30}/>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="p-6 border-b border-slate-200"><h3 className="font-bold text-slate-800">Performance Detalhada</h3></div>
-                    <div className="overflow-x-auto max-h-[400px]">
-                        <table className="w-full text-sm text-left">
-                            <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-xs sticky top-0">
-                                <tr>
-                                    <th className="px-6 py-4">Linha</th>
-                                    <th className="px-6 py-4 text-right">Receita</th>
-                                    <th className="px-6 py-4 text-right">Passageiros</th>
-                                    <th className="px-6 py-4 text-right">Ticket Médio</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {linePerformance.map((item, idx) => (
-                                    <tr key={idx} className="hover:bg-slate-50">
-                                        <td className="px-6 py-4 font-bold text-slate-700">{item.name}</td>
-                                        <td className="px-6 py-4 text-right font-bold text-blue-700">{formatMoney(item.revenue)}</td>
-                                        <td className="px-6 py-4 text-right text-slate-600">{item.passengers}</td>
-                                        <td className="px-6 py-4 text-right text-slate-500">{item.passengers > 0 ? formatMoney(item.revenue / item.passengers) : '-'}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        )}
-
       </div>
+
+      {/* REPORT PREVIEW AREA */}
+      <div className="flex-1 bg-slate-500/10 rounded-xl overflow-hidden border border-slate-300 relative flex justify-center p-8 overflow-y-auto no-print-bg">
+         <div className={`bg-white shadow-2xl transition-all duration-300 ${REPORT_LIST.find(r => r.id === selectedReportId)?.orientation === 'landscape' ? 'w-[297mm]' : 'w-[210mm]'}`}>
+             <PrintableReport 
+                ref={componentRef} 
+                data={reportOutput} 
+                definition={REPORT_LIST.find(r => r.id === selectedReportId)!}
+                dateRange={dateRange}
+                user={user?.name || 'Usuário'}
+             />
+         </div>
+      </div>
+
     </div>
   );
 };

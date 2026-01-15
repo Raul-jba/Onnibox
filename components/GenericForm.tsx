@@ -2,7 +2,7 @@
 import React from 'react';
 import { 
   User, Store, Truck, Gauge, MapPin, Phone, FileText, 
-  Calendar, CreditCard, Receipt, Building2, Map, Clock 
+  Calendar, CreditCard, Receipt, Building2, Map, Clock, Lock
 } from 'lucide-react';
 
 // Standard Styles (Moved from Registries for reuse)
@@ -18,7 +18,7 @@ export interface FieldOption {
 export interface FieldConfig<T> {
   name: keyof T;
   label: string;
-  type?: 'text' | 'number' | 'date' | 'time' | 'select' | 'textarea' | 'email' | 'tel';
+  type?: 'text' | 'number' | 'date' | 'time' | 'select' | 'textarea' | 'email' | 'tel' | 'password';
   options?: FieldOption[]; // For select
   gridCols?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12; // Bootstrap-like grid span
   required?: boolean;
@@ -68,6 +68,7 @@ export function GenericForm<T>({ fields, data, onChange }: GenericFormProps<T>) 
       if (sectionName.includes('Contato') || sectionName.includes('Endereço')) return Phone;
       if (sectionName.includes('Técnico')) return Gauge;
       if (sectionName.includes('Veículo')) return Truck;
+      if (sectionName.includes('Acesso') || sectionName.includes('Segurança')) return Lock;
       return null;
   };
 

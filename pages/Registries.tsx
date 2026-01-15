@@ -7,7 +7,8 @@ import { GenericForm, FieldConfig } from '../components/GenericForm';
 import { 
   Users, Truck, Map, CalendarClock, Building2, Receipt, Percent,
   User, MapPin, ArrowRight, Clock, Gauge, Briefcase, Store,
-  Database, Download, Upload, AlertCircle, Phone, FileText
+  Database, Download, Upload, AlertCircle, Phone, FileText,
+  CreditCard, CheckCircle2, ShieldCheck, Settings
 } from 'lucide-react';
 import { Button, Card } from '../components/Layout';
 import { usePermission } from '../hooks/usePermission';
@@ -43,51 +44,53 @@ export const Registries: React.FC = () => {
   const { can } = usePermission();
 
   const tabs = [
-    { id: 'suppliers', label: 'Fornecedores', icon: Store, desc: 'Gestão de parceiros' },
-    { id: 'drivers', label: 'Motoristas', icon: Users, desc: 'Condutores da frota' },
-    { id: 'vehicles', label: 'Veículos', icon: Truck, desc: 'Frota e manutenção' },
-    { id: 'agencies', label: 'Agências', icon: Building2, desc: 'Pontos de venda' },
-    { id: 'clients', label: 'Clientes', icon: Briefcase, desc: 'Fretamento/Turismo' },
-    { id: 'lines', label: 'Linhas', icon: Map, desc: 'Rotas operacionais' },
-    { id: 'schedules', label: 'Horários', icon: CalendarClock, desc: 'Quadro de horários' },
-    { id: 'expenses', label: 'Tipos Despesa', icon: Receipt, desc: 'Categorias financeiras' },
+    { id: 'suppliers', label: 'Fornecedores', icon: Store, desc: 'Parceiros e Serviços' },
+    { id: 'clients', label: 'Clientes', icon: Briefcase, desc: 'Fretamento' },
+    { id: 'drivers', label: 'Motoristas', icon: Users, desc: 'Equipe' },
+    { id: 'vehicles', label: 'Veículos', icon: Truck, desc: 'Frota' },
+    { id: 'agencies', label: 'Agências', icon: Building2, desc: 'Vendas' },
+    { id: 'lines', label: 'Linhas', icon: Map, desc: 'Rotas' },
+    { id: 'schedules', label: 'Horários', icon: CalendarClock, desc: 'Quadro' },
+    { id: 'expenses', label: 'Despesas', icon: Receipt, desc: 'Categorias' },
   ];
 
   if (can('edit_commissions')) {
-      tabs.push({ id: 'commissions', label: 'Comissões', icon: Percent, desc: 'Regras de repasse' });
+      tabs.push({ id: 'commissions', label: 'Comissões', icon: Percent, desc: 'Regras' });
   }
 
   if (can('manage_system')) {
-      tabs.push({ id: 'backup', label: 'Dados & Backup', icon: Database, desc: 'Segurança da informação' });
+      tabs.push({ id: 'backup', label: 'Sistema', icon: Settings, desc: 'Dados' });
   }
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="space-y-8 pb-12 animate-in fade-in duration-500">
       {/* Header Section */}
-      <div>
-        <h2 className="text-2xl font-extrabold text-slate-800">Cadastros Gerais</h2>
-        <p className="text-sm text-slate-500">Gerencie todas as entidades do sistema em um só lugar.</p>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-200 pb-6">
+        <div>
+            <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">Cadastros Gerais</h2>
+            <p className="text-sm text-slate-500 mt-1">Gestão centralizada de entidades e parâmetros do sistema.</p>
+        </div>
       </div>
 
-      {/* Navigation Tabs */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-2">
-        <div className="flex overflow-x-auto gap-2 pb-2 md:pb-0 custom-scrollbar">
+      {/* Modern Tabs */}
+      <div className="bg-white rounded-t-xl border-b border-slate-200 sticky top-0 z-10 shadow-sm mx-1">
+        <div className="flex overflow-x-auto custom-scrollbar">
             {tabs.map(tab => (
             <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-3 px-4 py-3 min-w-[160px] md:min-w-0 rounded-lg transition-all border ${
+                className={`group flex items-center gap-3 px-6 py-4 min-w-max transition-all border-b-2 ${
                 activeTab === tab.id 
-                    ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm' 
-                    : 'bg-white border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                    ? 'border-blue-600 bg-blue-50/50' 
+                    : 'border-transparent hover:bg-slate-50 hover:border-slate-300'
                 }`}
             >
-                <div className={`p-2 rounded-md ${activeTab === tab.id ? 'bg-blue-600 text-white' : 'bg-slate-100'}`}>
-                    <tab.icon size={18} />
+                <div className={`transition-colors ${activeTab === tab.id ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'}`}>
+                    <tab.icon size={20} strokeWidth={activeTab === tab.id ? 2.5 : 2} />
                 </div>
                 <div className="text-left">
-                    <div className="text-sm font-bold leading-none mb-1">{tab.label}</div>
-                    <div className="text-[10px] opacity-70 font-medium whitespace-nowrap">{tab.desc}</div>
+                    <div className={`text-sm font-bold leading-none ${activeTab === tab.id ? 'text-blue-700' : 'text-slate-600'}`}>{tab.label}</div>
+                    <div className="text-[10px] text-slate-400 font-medium mt-1 group-hover:text-slate-500">{tab.desc}</div>
                 </div>
             </button>
             ))}
@@ -95,7 +98,7 @@ export const Registries: React.FC = () => {
       </div>
 
       {/* Content Area */}
-      <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="min-h-[400px]">
         {activeTab === 'suppliers' && <SuppliersManager />}
         {activeTab === 'clients' && <ClientsManager />}
         {activeTab === 'drivers' && <DriversManager />}
@@ -122,15 +125,20 @@ const SuppliersManager = () => {
 
   useEffect(() => setItems(storage.getSuppliers()), []);
 
+  // Layout Otimizado: Dados principais -> Contato -> Endereço
   const fields: FieldConfig<Supplier>[] = [
-      { name: 'name', label: 'Razão Social', gridCols: 8, required: true, autoFocus: true, section: 'Dados da Empresa' },
-      { name: 'tradeName', label: 'Nome Fantasia', gridCols: 4, section: 'Dados da Empresa' },
-      { name: 'taxId', label: 'CNPJ / CPF', gridCols: 6, required: true, placeholder: '00.000.000/0000-00', section: 'Dados da Empresa' },
-      { name: 'category', label: 'Categoria', gridCols: 6, placeholder: 'Ex: Combustível, Peças', section: 'Dados da Empresa' },
+      // Identificação
+      { name: 'name', label: 'Razão Social', gridCols: 7, required: true, autoFocus: true, section: 'Identificação da Empresa', placeholder: 'Nome oficial da empresa' },
+      { name: 'taxId', label: 'CNPJ / CPF', gridCols: 5, required: true, placeholder: '00.000.000/0000-00', section: 'Identificação da Empresa' },
+      { name: 'tradeName', label: 'Nome Fantasia', gridCols: 6, section: 'Identificação da Empresa', placeholder: 'Como é conhecido' },
+      { name: 'category', label: 'Categoria de Serviço', gridCols: 6, placeholder: 'Ex: Oficina, Peças, Combustível', section: 'Identificação da Empresa' },
       
-      { name: 'phone', label: 'Telefone / Zap', gridCols: 6, section: 'Contato & Endereço' },
-      { name: 'email', label: 'Email', gridCols: 6, section: 'Contato & Endereço' },
-      { name: 'address', label: 'Endereço', gridCols: 8, section: 'Contato & Endereço' },
+      // Contato
+      { name: 'phone', label: 'Telefone / WhatsApp', gridCols: 4, section: 'Contato & Endereço', icon: Phone },
+      { name: 'email', label: 'E-mail Comercial', gridCols: 8, section: 'Contato & Endereço' },
+      
+      // Endereço (Fluxo Lógico)
+      { name: 'address', label: 'Logradouro (Rua, Av.)', gridCols: 8, section: 'Contato & Endereço' },
       { name: 'city', label: 'Cidade', gridCols: 4, section: 'Contato & Endereço' },
   ];
 
@@ -153,24 +161,31 @@ const SuppliersManager = () => {
   };
 
   const columns: Column<Supplier>[] = [
-    { header: "Fornecedor", render: (i) => (
-        <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-lg ${i.active ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-400'}`}><Store size={20}/></div>
+    { header: "Empresa / Fornecedor", render: (i) => (
+        <div className="flex items-center gap-4">
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${i.active ? 'bg-white border-slate-200 text-slate-600' : 'bg-slate-50 border-slate-200 text-slate-300'}`}>
+                <Store size={20}/>
+            </div>
             <div>
-                <div className={`font-bold ${i.active ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{i.name}</div>
-                <div className="text-xs text-slate-500">{i.tradeName}</div>
+                <div className={`font-bold text-sm ${i.active ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{i.name}</div>
+                <div className="text-xs text-slate-500">{i.tradeName || i.taxId}</div>
             </div>
         </div>
     )},
-    { header: "Categoria", render: (i) => <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-bold border border-slate-200">{i.category || 'Geral'}</span> },
-    { header: "Contato", render: (i) => <div className="text-sm"><div className="font-medium">{i.phone}</div><div className="text-xs text-blue-600">{i.email}</div></div> },
-    { header: "Localização", render: (i) => <div className="text-xs font-medium text-slate-600 flex items-center gap-1"><MapPin size={12}/> {i.city || '-'}</div> }
+    { header: "Categoria", render: (i) => i.category ? <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded text-xs font-bold border border-blue-100 uppercase tracking-wide">{i.category}</span> : <span className="text-slate-400 text-xs">-</span> },
+    { header: "Contato", render: (i) => (
+        <div className="text-sm text-slate-600">
+            <div className="font-medium flex items-center gap-1">{i.phone}</div>
+            <div className="text-xs text-slate-400">{i.email}</div>
+        </div> 
+    )},
+    { header: "Cidade", render: (i) => <div className="text-xs font-bold text-slate-600">{i.city || '-'}</div> }
   ];
 
   return (
     <GenericTableManager<Supplier>
       title="Fornecedores"
-      subtitle="Cadastro de prestadores de serviço e peças"
+      subtitle="Centros de custo e prestadores de serviço"
       items={items}
       columns={columns}
       onNew={() => { setFormData({ active: true }); setIsModalOpen(true); }}
@@ -181,7 +196,7 @@ const SuppliersManager = () => {
       isModalOpen={isModalOpen}
       onCloseModal={() => setIsModalOpen(false)}
       onSave={handleSave}
-      searchPlaceholder="Buscar fornecedor..."
+      searchPlaceholder="Buscar por nome, CNPJ ou categoria..."
       renderForm={() => <GenericForm fields={fields} data={formData} onChange={setFormData} />}
     />
   );
@@ -196,24 +211,28 @@ const ClientsManager = () => {
 
   useEffect(() => setItems(storage.getClients()), []);
 
-  // Dynamic Fields based on Type (PF/PJ)
+  // Campos dinâmicos otimizados
   const fields = useMemo((): FieldConfig<Client>[] => {
       const isPJ = formData.type === 'PJ';
       return [
-          { name: 'name', label: isPJ ? 'Razão Social' : 'Nome Completo', required: true, gridCols: isPJ ? 12 : 8, section: 'Dados de Identificação' },
-          ...(isPJ ? [{ name: 'tradeName', label: 'Nome Fantasia', gridCols: 12, section: 'Dados de Identificação' } as FieldConfig<Client>] : []),
-          { name: 'taxId', label: isPJ ? 'CNPJ' : 'CPF', required: true, gridCols: isPJ ? 6 : 4, placeholder: isPJ ? '00.000.000/0001-00' : '000.000.000-00', section: 'Dados de Identificação' },
-          { name: 'identityDoc', label: isPJ ? 'Inscrição Estadual' : 'RG', gridCols: 6, section: 'Dados de Identificação' },
+          // Seção Principal
+          { name: 'name', label: isPJ ? 'Razão Social' : 'Nome Completo', required: true, gridCols: isPJ ? 8 : 8, section: 'Dados do Cliente', autoFocus: true },
+          ...(isPJ ? [{ name: 'tradeName', label: 'Nome Fantasia', gridCols: 4, section: 'Dados do Cliente' } as FieldConfig<Client>] : []),
+          { name: 'taxId', label: isPJ ? 'CNPJ' : 'CPF', required: true, gridCols: isPJ ? 4 : 4, placeholder: isPJ ? '00.000.000/0001-00' : '000.000.000-00', section: 'Dados do Cliente' },
           
-          { name: 'phone', label: 'Telefone / WhatsApp', required: true, gridCols: 6, section: 'Contato' },
-          { name: 'email', label: 'Email', gridCols: 6, section: 'Contato' },
+          // Contato Compacto
+          { name: 'phone', label: 'Celular / WhatsApp', required: true, gridCols: 4, section: 'Dados do Cliente', icon: Phone },
+          { name: 'email', label: 'E-mail', gridCols: 4, section: 'Dados do Cliente' },
 
-          { name: 'zipCode', label: 'CEP', gridCols: 3, section: 'Endereço' },
-          { name: 'city', label: 'Cidade', gridCols: 6, section: 'Endereço' },
-          { name: 'state', label: 'UF', gridCols: 3, uppercase: true, section: 'Endereço' },
-          { name: 'address', label: 'Logradouro (Rua/Av)', gridCols: 10, section: 'Endereço' },
-          { name: 'number', label: 'Número', gridCols: 2, section: 'Endereço' },
-          { name: 'neighborhood', label: 'Bairro', gridCols: 12, section: 'Endereço' },
+          // Endereço Lógico
+          { name: 'zipCode', label: 'CEP', gridCols: 3, section: 'Localização', placeholder: '00000-000' },
+          { name: 'city', label: 'Cidade', gridCols: 6, section: 'Localização' },
+          { name: 'state', label: 'UF', gridCols: 3, uppercase: true, section: 'Localização', placeholder: 'SP' },
+          
+          { name: 'address', label: 'Logradouro', gridCols: 9, section: 'Localização' },
+          { name: 'number', label: 'Nº', gridCols: 3, section: 'Localização' },
+          { name: 'neighborhood', label: 'Bairro', gridCols: 6, section: 'Localização' },
+          { name: 'identityDoc', label: isPJ ? 'Inscrição Est.' : 'RG', gridCols: 6, section: 'Localização' },
       ];
   }, [formData.type]);
 
@@ -236,23 +255,30 @@ const ClientsManager = () => {
   };
 
   const columns: Column<Client>[] = [
-    { header: "Cliente", render: (i) => (
+    { header: "Cliente / Razão Social", render: (i) => (
         <div className={i.active ? '' : 'opacity-50'}>
-            <div className={`font-bold ${i.active ? 'text-slate-800' : 'text-slate-500 line-through'}`}>{i.name}</div>
-            <div className="flex items-center gap-2 mt-0.5">
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${i.type === 'PJ' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>{i.type}</span>
-                <span className="text-xs text-slate-500 font-mono">{i.taxId}</span>
+            <div className="flex items-center gap-2 mb-1">
+                <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${i.type === 'PJ' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-teal-50 text-teal-700 border-teal-100'}`}>
+                    {i.type}
+                </span>
+                <span className="text-xs text-slate-400 font-mono tracking-wide">{i.taxId}</span>
             </div>
+            <div className={`font-bold text-sm ${i.active ? 'text-slate-800' : 'text-slate-500 line-through'}`}>{i.name}</div>
+            {i.type === 'PJ' && i.tradeName && <div className="text-xs text-slate-500">{i.tradeName}</div>}
         </div>
     )},
-    { header: "Local", render: (i) => <div className="text-sm font-medium">{i.city}/{i.state}</div> },
-    { header: "Contato", render: (i) => <div className="text-sm">{i.phone}</div> }
+    { header: "Localização", render: (i) => (
+        <div className="text-sm text-slate-600 flex items-center gap-1">
+            <MapPin size={12} className="text-slate-400"/> {i.city}/{i.state}
+        </div> 
+    )},
+    { header: "Contato", render: (i) => <div className="text-sm font-medium text-slate-700">{i.phone}</div> }
   ];
 
   return (
     <GenericTableManager<Client>
       title="Clientes"
-      subtitle="Cadastro de clientes para turismo e fretamento"
+      subtitle="Contratantes para fretamento e turismo"
       items={items}
       columns={columns}
       onNew={() => { setFormData({ active: true, type: 'PF' }); setIsModalOpen(true); }}
@@ -263,25 +289,27 @@ const ClientsManager = () => {
       isModalOpen={isModalOpen}
       onCloseModal={() => setIsModalOpen(false)}
       onSave={handleSave}
-      searchPlaceholder="Buscar cliente..."
+      searchPlaceholder="Buscar por nome ou documento..."
       renderForm={() => (
-        <div className="space-y-4">
-             {/* Visual Toggle for PF/PJ */}
-             <div className="grid grid-cols-2 gap-4 p-1 bg-slate-100 rounded-lg border border-slate-200">
-                <button
-                    type="button"
-                    onClick={() => setFormData({...formData, type: 'PF'})}
-                    className={`py-2.5 rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2 ${formData.type === 'PF' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                    <User size={16}/> Pessoa Física
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setFormData({...formData, type: 'PJ'})}
-                    className={`py-2.5 rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2 ${formData.type === 'PJ' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                    <Store size={16}/> Pessoa Jurídica
-                </button>
+        <div className="space-y-6">
+             {/* Tipo de Cliente Switch - Estilo Segmented Control */}
+             <div className="flex justify-center">
+                 <div className="bg-slate-100 p-1 rounded-lg inline-flex border border-slate-200">
+                    <button
+                        type="button"
+                        onClick={() => setFormData({...formData, type: 'PF'})}
+                        className={`px-6 py-2 rounded-md text-sm font-bold transition-all flex items-center gap-2 ${formData.type === 'PF' ? 'bg-white text-teal-700 shadow-sm ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        <User size={16}/> Pessoa Física
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setFormData({...formData, type: 'PJ'})}
+                        className={`px-6 py-2 rounded-md text-sm font-bold transition-all flex items-center gap-2 ${formData.type === 'PJ' ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        <Store size={16}/> Pessoa Jurídica
+                    </button>
+                </div>
             </div>
             <GenericForm fields={fields} data={formData} onChange={setFormData} />
         </div>
@@ -300,13 +328,15 @@ const DriversManager = () => {
   useEffect(() => setItems(storage.getDrivers()), []);
 
   const fields: FieldConfig<Driver>[] = [
+      // Pessoal
       { name: 'name', label: 'Nome Completo', required: true, gridCols: 8, section: 'Dados Pessoais', autoFocus: true },
-      { name: 'cpf', label: 'CPF', gridCols: 4, section: 'Dados Pessoais' },
-      { name: 'phone', label: 'Telefone / Celular', gridCols: 6, section: 'Dados Pessoais' },
+      { name: 'cpf', label: 'CPF', gridCols: 4, section: 'Dados Pessoais', placeholder: '000.000.000-00' },
+      { name: 'phone', label: 'Celular / WhatsApp', gridCols: 6, section: 'Dados Pessoais', icon: Phone },
+      { name: 'admissionDate', label: 'Data de Admissão', type: 'date', gridCols: 6, section: 'Dados Pessoais' },
       
-      { name: 'cnh', label: 'Número CNH', gridCols: 6, section: 'Habilitação & Contrato' },
-      { name: 'cnhCategory', label: 'Categoria', type: 'select', gridCols: 3, options: [{value: 'B', label:'B'}, {value:'C', label:'C'}, {value:'D', label:'D'}, {value:'E', label:'E'}, {value:'AD', label:'AD'}, {value:'AE', label:'AE'}], section: 'Habilitação & Contrato' },
-      { name: 'admissionDate', label: 'Data de Admissão', type: 'date', gridCols: 3, section: 'Habilitação & Contrato' },
+      // Profissional
+      { name: 'cnh', label: 'Número da CNH', gridCols: 8, section: 'Habilitação Profissional (CNH)', icon: CreditCard },
+      { name: 'cnhCategory', label: 'Categoria', type: 'select', gridCols: 4, options: [{value: 'B', label:'B'}, {value:'C', label:'C'}, {value:'D', label:'D'}, {value:'E', label:'E'}, {value:'AD', label:'AD'}, {value:'AE', label:'AE'}], section: 'Habilitação Profissional (CNH)' },
   ];
 
   const handleSave = () => {
@@ -328,28 +358,28 @@ const DriversManager = () => {
   const columns: Column<Driver>[] = [
     { header: "Motorista", render: (i) => (
         <div className="flex items-center gap-3">
-             <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border ${i.active ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-red-50 text-red-300 border-red-100'}`}>
+             <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border text-sm ${i.active ? 'bg-white text-slate-600 border-slate-200 shadow-sm' : 'bg-slate-50 text-slate-300 border-slate-100'}`}>
                 {i.name.substring(0,2).toUpperCase()}
              </div>
              <div>
-                 <div className={`font-bold ${i.active ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{i.name}</div>
-                 <div className="text-xs text-slate-500 font-mono">{i.cpf || 'Sem CPF'}</div>
+                 <div className={`font-bold text-sm ${i.active ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{i.name}</div>
+                 <div className="text-xs text-slate-500 font-mono tracking-wide">{i.cpf || 'Sem CPF'}</div>
              </div>
         </div>
     )},
     { header: "CNH", render: (i) => (
         <div className="flex items-center gap-2">
-            <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded font-bold text-xs border border-blue-200">{i.cnhCategory}</span>
-            <span className="text-sm font-medium">{i.cnh}</span>
+            <span className="bg-slate-100 text-slate-700 px-2 py-1 rounded font-bold text-xs border border-slate-200">{i.cnhCategory || '?'}</span>
+            <span className="text-sm font-medium text-slate-600 font-mono">{i.cnh}</span>
         </div>
     )},
-    { header: "Contato", render: (i) => <span className="font-medium text-slate-600">{i.phone}</span> },
+    { header: "Contato", render: (i) => <span className="font-medium text-sm text-slate-600">{i.phone}</span> },
   ];
 
   return (
     <GenericTableManager<Driver>
       title="Motoristas"
-      subtitle="Quadro de condutores"
+      subtitle="Quadro de condutores e documentação"
       items={items}
       columns={columns}
       onNew={() => { setFormData({ active: true }); setIsModalOpen(true); }}
@@ -376,13 +406,15 @@ const VehiclesManager = () => {
   useEffect(() => setItems(storage.getVehicles()), []);
 
   const fields: FieldConfig<Vehicle>[] = [
-    { name: 'plate', label: 'Placa', required: true, uppercase: true, placeholder: 'ABC-1234', gridCols: 4, section: 'Identificação' },
-    { name: 'brand', label: 'Marca/Fabricante', placeholder: 'Ex: Marcopolo', gridCols: 8, section: 'Identificação' },
-    { name: 'description', label: 'Modelo / Descrição', required: true, placeholder: 'Ex: Paradiso 1200 G7', gridCols: 12, section: 'Identificação' },
+    // Identificação
+    { name: 'plate', label: 'Placa', required: true, uppercase: true, placeholder: 'ABC-1234', gridCols: 4, section: 'Identificação da Frota', autoFocus: true },
+    { name: 'brand', label: 'Marca/Chassi', placeholder: 'Ex: Marcopolo / Volvo', gridCols: 8, section: 'Identificação da Frota' },
+    { name: 'description', label: 'Modelo / Descrição (Apelido)', required: true, placeholder: 'Ex: Paradiso 1200 G7', gridCols: 12, section: 'Identificação da Frota' },
     
-    { name: 'year', label: 'Ano Fab.', type: 'number', gridCols: 4, section: 'Técnico' },
-    { name: 'seats', label: 'Capacidade (Lugares)', type: 'number', gridCols: 4, section: 'Técnico' },
-    { name: 'initialMileage', label: 'KM Atual (Hodômetro)', type: 'number', gridCols: 4, section: 'Técnico' },
+    // Dados Técnicos
+    { name: 'year', label: 'Ano Fabricação', type: 'number', gridCols: 4, section: 'Dados Técnicos', icon: Gauge },
+    { name: 'seats', label: 'Capacidade (Lugares)', type: 'number', gridCols: 4, section: 'Dados Técnicos' },
+    { name: 'initialMileage', label: 'KM Atual (Hodômetro)', type: 'number', gridCols: 4, section: 'Dados Técnicos' },
   ];
 
   const handleSave = () => {
@@ -403,28 +435,30 @@ const VehiclesManager = () => {
   };
 
   const columns: Column<Vehicle>[] = [
-    { header: "Veículo", render: (i) => (
-        <div className="flex items-center gap-3">
-             <div className={`p-2 rounded ${i.active ? 'bg-slate-100 text-slate-600' : 'bg-red-50 text-red-300'}`}><Truck size={24}/></div>
+    { header: "Veículo / Placa", render: (i) => (
+        <div className="flex items-center gap-4">
+             <div className={`p-2.5 rounded-lg border ${i.active ? 'bg-blue-50 border-blue-100 text-blue-600' : 'bg-slate-50 border-slate-200 text-slate-300'}`}>
+                 <Truck size={20}/>
+             </div>
              <div>
-                <div className={`font-extrabold text-lg leading-none ${i.active ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{i.plate}</div>
-                <div className="text-xs text-slate-500 uppercase font-medium mt-1">{i.brand} - {i.description}</div>
+                <div className={`font-black text-base leading-none tracking-tight ${i.active ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{i.plate}</div>
+                <div className="text-xs text-slate-500 font-medium mt-1">{i.brand} • {i.description}</div>
              </div>
         </div>
     )},
-    { header: "Capacidade", render: (i) => <span className="font-bold text-slate-600">{i.seats} Lugares</span>, align: 'center' },
-    { header: "Hodômetro Atual", render: (i) => (
-        <div className="flex items-center gap-1 font-mono text-sm text-slate-700">
+    { header: "Lotação", render: (i) => <span className="font-bold text-slate-600 text-sm bg-slate-100 px-2 py-1 rounded">{i.seats || '?'} Lug.</span>, align: 'center' },
+    { header: "KM Atual", render: (i) => (
+        <div className="flex items-center gap-1 font-mono text-sm text-slate-700 font-bold">
             <Gauge size={14} className="text-slate-400"/> {i.initialMileage?.toLocaleString()} km
         </div>
     )},
-    { header: "Ano", render: (i) => i.year || '-', align: 'center'}
+    { header: "Ano", render: (i) => <span className="text-sm font-medium text-slate-600">{i.year || '-'}</span>, align: 'center'}
   ];
 
   return (
     <GenericTableManager<Vehicle>
       title="Veículos"
-      subtitle="Gestão da frota"
+      subtitle="Cadastro e controle da frota"
       items={items}
       columns={columns}
       onNew={() => { setFormData({ active: true }); setIsModalOpen(true); }}
@@ -435,7 +469,7 @@ const VehiclesManager = () => {
       isModalOpen={isModalOpen}
       onCloseModal={() => setIsModalOpen(false)}
       onSave={handleSave}
-      searchPlaceholder="Buscar placa..."
+      searchPlaceholder="Buscar por placa ou modelo..."
       renderForm={() => <GenericForm fields={fields} data={formData} onChange={setFormData} />}
     />
   );
@@ -458,15 +492,15 @@ const LinesManager = () => {
   };
 
   const fields: FieldConfig<Line>[] = [
-      { name: 'name', label: 'Nome da Linha', required: true, autoFocus: true, placeholder: 'Ex: São Paulo x Rio de Janeiro' }
+      { name: 'name', label: 'Descrição da Linha', required: true, autoFocus: true, placeholder: 'Ex: São Paulo x Rio de Janeiro' }
   ];
 
   return (
     <GenericTableManager<Line>
       title="Linhas"
-      subtitle="Definição de trajetos operacionais"
+      subtitle="Itinerários macro do sistema"
       items={items}
-      columns={[{ header: "Descrição da Linha", render: (i) => <span className={`font-bold text-lg ${i.active ? 'text-slate-700' : 'text-slate-400 line-through'}`}>{i.name}</span> }]}
+      columns={[{ header: "Descrição da Linha", render: (i) => <span className={`font-bold text-base ${i.active ? 'text-slate-700' : 'text-slate-400 line-through'}`}>{i.name}</span> }]}
       onNew={() => { setFormData({ active: true }); setIsModalOpen(true); }}
       onEdit={(i) => { setFormData(i); setIsModalOpen(true); }}
       onDelete={can('delete_records') ? (i) => { if(confirm(i.active ? "Desativar linha? (Histórico mantido)" : "Reativar linha?")) { storage.deleteLine(i.id); setItems(storage.getLines()); } } : undefined}
@@ -492,10 +526,10 @@ const SchedulesManager = () => {
   useEffect(() => { setItems(storage.getRoutes()); setLines(storage.getLines()); }, []);
 
   const fields: FieldConfig<RouteDef>[] = [
-      { name: 'lineId', label: 'Linha Vinculada', type: 'select', required: true, options: lines.map(l => ({value: l.id, label: l.name})), gridCols: 12 },
-      { name: 'time', label: 'Horário', type: 'time', required: true, gridCols: 6 },
-      { name: 'origin', label: 'Cidade Origem', gridCols: 6, required: true },
-      { name: 'destination', label: 'Cidade Destino', gridCols: 6, required: true },
+      { name: 'lineId', label: 'Linha Vinculada', type: 'select', required: true, options: lines.map(l => ({value: l.id, label: l.name})), gridCols: 12, autoFocus: true },
+      { name: 'time', label: 'Horário de Saída', type: 'time', required: true, gridCols: 12, section: 'Detalhes da Viagem', icon: Clock },
+      { name: 'origin', label: 'Cidade Origem', gridCols: 6, required: true, section: 'Detalhes da Viagem' },
+      { name: 'destination', label: 'Cidade Destino', gridCols: 6, required: true, section: 'Detalhes da Viagem' },
   ];
 
   const handleSave = () => {
@@ -515,11 +549,11 @@ const SchedulesManager = () => {
   return (
     <GenericTableManager<RouteDef>
       title="Quadro de Horários"
-      subtitle="Itinerários e horários de partida"
+      subtitle="Definição de partidas e itinerários detalhados"
       items={filteredItems}
       columns={[
-        { header: "Linha", render: (i) => <span className="text-xs font-bold uppercase bg-slate-100 text-slate-600 px-2 py-1 rounded border border-slate-200">{lines.find(l => l.id === i.lineId)?.name || 'Linha Excluída'}</span> },
-        { header: "Horário", render: (i) => <div className="flex items-center gap-2 font-extrabold text-blue-700 bg-blue-50 px-3 py-1 rounded-full w-fit"><Clock size={16}/> {i.time}</div> },
+        { header: "Linha", render: (i) => <span className="text-[10px] uppercase font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded border border-slate-200">{lines.find(l => l.id === i.lineId)?.name || 'Linha Excluída'}</span> },
+        { header: "Partida", render: (i) => <div className="font-black text-slate-800 text-lg flex items-center gap-1">{i.time} <span className="text-xs font-normal text-slate-400">h</span></div> },
         { header: "Itinerário", render: (i) => (
             <div className={`flex items-center gap-3 text-sm font-bold ${i.active ? 'text-slate-700' : 'text-slate-400 line-through'}`}>
                 <span>{i.origin}</span> 
@@ -559,13 +593,13 @@ const AgenciesManager = () => {
   useEffect(() => setItems(storage.getAgencies()), []);
 
   const fields: FieldConfig<Agency>[] = [
-      { name: 'name', label: 'Nome da Agência', required: true, gridCols: 8, section: 'Dados da Agência', placeholder: 'Ex: Rodoviária Tietê - Box 10' },
+      { name: 'name', label: 'Nome da Agência', required: true, gridCols: 8, section: 'Dados da Agência', placeholder: 'Ex: Rodoviária Tietê - Box 10', autoFocus: true },
       { name: 'city', label: 'Cidade', required: true, gridCols: 4, section: 'Dados da Agência' },
       { name: 'address', label: 'Endereço Completo', gridCols: 12, section: 'Dados da Agência' },
       
-      { name: 'managerName', label: 'Nome Gerente', gridCols: 6, section: 'Contato do Responsável' },
-      { name: 'phone', label: 'Telefone', gridCols: 6, section: 'Contato do Responsável' },
-      { name: 'email', label: 'Email', gridCols: 12, section: 'Contato do Responsável' },
+      { name: 'managerName', label: 'Nome do Responsável', gridCols: 6, section: 'Contato', icon: User },
+      { name: 'phone', label: 'Telefone / WhatsApp', gridCols: 6, section: 'Contato' },
+      { name: 'email', label: 'Email para Relatórios', gridCols: 12, section: 'Contato' },
   ];
 
   const handleSave = () => {
@@ -584,17 +618,17 @@ const AgenciesManager = () => {
 
   const columns: Column<Agency>[] = [
     { header: "Agência", render: (i) => (
-        <div className={`font-bold text-lg ${i.active ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{i.name}</div>
+        <div className={`font-bold text-sm ${i.active ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{i.name}</div>
     )},
     { header: "Localização", render: (i) => (
         <div>
-            <div className="flex items-center gap-1 font-bold text-sm text-slate-700"><MapPin size={14} className="text-red-500"/> {i.city}</div>
-            <div className="text-xs text-slate-500 ml-5">{i.address || 'Sem endereço'}</div>
+            <div className="flex items-center gap-1 font-bold text-xs text-slate-700 bg-slate-100 px-2 py-0.5 rounded w-fit"><MapPin size={12} className="text-red-500"/> {i.city}</div>
+            <div className="text-xs text-slate-400 mt-1">{i.address || 'Sem endereço'}</div>
         </div>
     )},
     { header: "Responsável", render: (i) => (
         <div className="text-sm">
-            <div className="font-medium">{i.managerName}</div>
+            <div className="font-medium text-slate-700">{i.managerName}</div>
             <div className="text-xs text-slate-500">{i.phone}</div>
         </div>
     )}
@@ -603,7 +637,7 @@ const AgenciesManager = () => {
   return (
     <GenericTableManager<Agency>
       title="Agências"
-      subtitle="Pontos de venda e rodoviárias"
+      subtitle="Pontos de venda, rodoviárias e parceiros comerciais"
       items={items}
       columns={columns}
       onNew={() => { setFormData({ active: true }); setIsModalOpen(true); }}
@@ -646,9 +680,9 @@ const ExpenseTypesManager = () => {
   return (
     <GenericTableManager<ExpenseType>
       title="Tipos de Despesa"
-      subtitle="Categorização para o fluxo de caixa"
+      subtitle="Categorização para o plano de contas"
       items={items}
-      columns={[{ header: "Descrição da Categoria", render: (i) => <span className={`font-bold ${i.active ? 'text-slate-700' : 'text-slate-400 line-through'}`}>{i.name}</span> }]}
+      columns={[{ header: "Descrição da Categoria", render: (i) => <span className={`font-bold text-sm ${i.active ? 'text-slate-700' : 'text-slate-400 line-through'}`}>{i.name}</span> }]}
       onNew={() => { setFormData({ active: true }); setIsModalOpen(true); }}
       onEdit={(i) => { setFormData(i); setIsModalOpen(true); }}
       onDelete={can('delete_records') ? (i) => { if(confirm(i.active ? "Desativar categoria? (Histórico mantido)" : "Reativar categoria?")) { storage.deleteExpenseType(i.id); setItems(storage.getExpenseTypes()); } } : undefined}
@@ -699,11 +733,11 @@ const CommissionsManager = () => {
   return (
     <GenericTableManager<CommissionRule>
       title="Regras de Comissão"
-      subtitle="Configuração de repasses automáticos"
+      subtitle="Configuração de repasses automáticos sobre vendas"
       items={items}
       columns={[
-        { header: "Beneficiário", render: (i) => <div className="flex items-center gap-2"><div className={`p-1.5 rounded-lg ${i.targetType === 'DRIVER' ? 'bg-blue-100 text-blue-600' : 'bg-purple-100 text-purple-600'}`}>{i.targetType === 'DRIVER' ? <User size={16}/> : <Building2 size={16}/>}</div><div><div className={`font-bold ${i.active ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{getEntityName(i)}</div><div className="text-[10px] uppercase font-bold text-slate-400">{i.targetType === 'DRIVER' ? 'Motorista' : 'Agência'}</div></div></div> },
-        { header: "Porcentagem", render: (i) => <span className="font-bold text-green-700 bg-green-50 px-3 py-1 rounded-full border border-green-200">{i.percentage}%</span>, align: 'center' }
+        { header: "Beneficiário", render: (i) => <div className="flex items-center gap-3"><div className={`p-2 rounded-lg ${i.targetType === 'DRIVER' ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-purple-50 text-purple-600 border border-purple-100'}`}>{i.targetType === 'DRIVER' ? <User size={18}/> : <Building2 size={18}/>}</div><div><div className={`font-bold text-sm ${i.active ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{getEntityName(i)}</div><div className="text-[10px] uppercase font-bold text-slate-400 tracking-wide">{i.targetType === 'DRIVER' ? 'Motorista' : 'Agência'}</div></div></div> },
+        { header: "Comissão Fixa", render: (i) => <span className="font-bold text-green-700 bg-green-50 px-3 py-1 rounded-full border border-green-200 text-sm">{i.percentage}%</span>, align: 'center' }
       ]}
       onNew={() => { setFormData({ active: true, targetType: 'AGENCY' }); setIsModalOpen(true); }}
       onEdit={(i) => { setFormData(i); setIsModalOpen(true); }}
@@ -716,24 +750,34 @@ const CommissionsManager = () => {
       renderForm={() => (
           <div className="space-y-6">
              <div className="grid grid-cols-2 gap-4">
-                <div onClick={() => setFormData({...formData, targetType: 'AGENCY', targetId: ''})} className={`cursor-pointer border-2 rounded-xl p-4 text-center transition-all ${formData.targetType === 'AGENCY' ? 'bg-purple-50 border-purple-500 text-purple-700' : 'bg-white border-slate-200 hover:bg-slate-50'}`}>
-                    <Building2 size={24} className="mx-auto mb-2"/>
-                    <span className="font-bold">Agência</span>
-                </div>
-                <div onClick={() => setFormData({...formData, targetType: 'DRIVER', targetId: ''})} className={`cursor-pointer border-2 rounded-xl p-4 text-center transition-all ${formData.targetType === 'DRIVER' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-slate-200 hover:bg-slate-50'}`}>
-                    <User size={24} className="mx-auto mb-2"/>
-                    <span className="font-bold">Motorista</span>
-                </div>
+                <button 
+                    type="button"
+                    onClick={() => setFormData({...formData, targetType: 'AGENCY', targetId: ''})} 
+                    className={`cursor-pointer border-2 rounded-xl p-4 text-center transition-all flex flex-col items-center gap-2 ${formData.targetType === 'AGENCY' ? 'bg-purple-50 border-purple-500 text-purple-700 ring-2 ring-purple-200 ring-offset-2' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
+                >
+                    <Building2 size={32} />
+                    <span className="font-bold text-sm">Agência / Rodoviária</span>
+                </button>
+                <button 
+                    type="button"
+                    onClick={() => setFormData({...formData, targetType: 'DRIVER', targetId: ''})} 
+                    className={`cursor-pointer border-2 rounded-xl p-4 text-center transition-all flex flex-col items-center gap-2 ${formData.targetType === 'DRIVER' ? 'bg-blue-50 border-blue-500 text-blue-700 ring-2 ring-blue-200 ring-offset-2' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
+                >
+                    <User size={32} />
+                    <span className="font-bold text-sm">Motorista</span>
+                </button>
              </div>
              
-             <GenericForm fields={fields} data={formData} onChange={setFormData} />
+             <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <GenericForm fields={fields} data={formData} onChange={setFormData} />
+             </div>
           </div>
       )}
     />
   );
 };
 
-// 9. BACKUP MANAGER (Kept as is, custom UI)
+// 9. BACKUP MANAGER
 const BackupManager = () => {
     const handleDownload = () => {
         const data = storage.exportData();
@@ -768,49 +812,50 @@ const BackupManager = () => {
     };
 
     return (
-        <div className="space-y-6 max-w-4xl mx-auto">
-            <Card className="p-8 border-l-4 border-blue-600">
-                <div className="flex gap-4 items-start">
-                    <div className="bg-blue-100 p-3 rounded-full text-blue-600"><Database size={32}/></div>
+        <div className="space-y-6 max-w-4xl mx-auto pt-4">
+            <Card className="p-8 border-l-4 border-blue-600 bg-white shadow-md">
+                <div className="flex gap-5 items-start">
+                    <div className="bg-blue-50 p-4 rounded-full text-blue-600 border border-blue-100"><Database size={32}/></div>
                     <div>
                         <h3 className="text-xl font-bold text-slate-800">Cópia de Segurança (Backup)</h3>
-                        <p className="text-slate-600 mt-2">
-                            Como este sistema roda diretamente no seu navegador, é fundamental fazer backups regulares para evitar a perda de dados caso você limpe o cache ou troque de computador.
+                        <p className="text-slate-600 mt-2 leading-relaxed">
+                            O sistema armazena os dados no seu navegador. Realize backups frequentes para garantir a segurança das informações.
                         </p>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
-                    <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-                        <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2"><Download size={20}/> Exportar Dados</h4>
-                        <p className="text-sm text-slate-500 mb-6">Baixe um arquivo contendo todos os cadastros, rotas e financeiro.</p>
-                        <Button onClick={handleDownload} className="w-full justify-center py-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-10">
+                    <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 hover:border-blue-300 transition-colors">
+                        <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2 text-lg"><Download size={20} className="text-blue-600"/> Exportar Dados</h4>
+                        <p className="text-sm text-slate-500 mb-6 min-h-[40px]">Baixe um arquivo JSON contendo todos os cadastros e lançamentos financeiros.</p>
+                        <Button onClick={handleDownload} className="w-full justify-center py-3 text-sm font-bold shadow-sm">
                             Baixar Backup Agora
                         </Button>
                     </div>
 
-                    <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-                         <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2"><Upload size={20}/> Restaurar Dados</h4>
-                         <p className="text-sm text-slate-500 mb-6">Carregue um arquivo de backup anterior para restaurar o sistema.</p>
+                    <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 hover:border-blue-300 transition-colors">
+                         <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2 text-lg"><Upload size={20} className="text-blue-600"/> Restaurar Dados</h4>
+                         <p className="text-sm text-slate-500 mb-6 min-h-[40px]">Recupere o sistema a partir de um arquivo salvo anteriormente.</p>
                          <label className="block w-full">
                             <span className="sr-only">Escolher arquivo</span>
                             <input type="file" accept=".json" onChange={handleUpload} className="block w-full text-sm text-slate-500
-                                file:mr-4 file:py-3 file:px-4
-                                file:rounded-md file:border-0
-                                file:text-sm file:font-semibold
-                                file:bg-blue-50 file:text-blue-700
-                                hover:file:bg-blue-100 cursor-pointer
+                                file:mr-4 file:py-3 file:px-6
+                                file:rounded-lg file:border-0
+                                file:text-sm file:font-bold
+                                file:bg-white file:text-blue-700
+                                file:shadow-sm file:ring-1 file:ring-slate-200
+                                hover:file:bg-blue-50 cursor-pointer
                             "/>
                         </label>
                     </div>
                 </div>
             </Card>
 
-            <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg flex gap-3">
-                <AlertCircle className="text-amber-600 shrink-0" size={24}/>
+            <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg flex gap-4 items-start">
+                <AlertCircle className="text-amber-600 shrink-0 mt-0.5" size={20}/>
                 <div>
-                    <h4 className="font-bold text-amber-800">Importante</h4>
-                    <p className="text-sm text-amber-700 mt-1">
+                    <h4 className="font-bold text-amber-800 text-sm">Política de Segurança</h4>
+                    <p className="text-xs text-amber-800 mt-1 leading-relaxed">
                         Recomendamos fazer o download do backup ao final de cada dia ou semana. Guarde o arquivo em um local seguro (Google Drive, E-mail ou Pen-drive).
                     </p>
                 </div>

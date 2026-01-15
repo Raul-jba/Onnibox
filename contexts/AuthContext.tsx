@@ -1,10 +1,11 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, UserRole } from '../types';
+import { storage, createAuditLog } from '../services/storageService';
 
 interface AuthContextData {
   user: UserProfile | null;
-  login: (pin: string) => boolean;
+  login: (email: string, pass: string) => boolean;
   logout: () => void;
   isAuthenticated: boolean;
 }
@@ -16,46 +17,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   // Load from session storage to persist refresh, but clear on close
   useEffect(() => {
+      // Ensure storage is init (creates default admin if empty)
+      storage.init();
       const saved = sessionStorage.getItem('onnibox_auth');
       if (saved) setUser(JSON.parse(saved));
   }, []);
 
-  const login = (pin: string) => {
-    let role: UserRole | null = null;
-    let name = '';
-
-    // MOCK LOGIN MATRIX
-    switch (pin) {
-        case '1111': // ADMIN
-            role = 'ADMIN';
-            name = 'Administrador';
-            break;
-        case '2222': // GESTOR
-            role = 'MANAGER';
-            name = 'Gestor de Frota';
-            break;
-        case '3333': // FINANCEIRO
-            role = 'FINANCIAL';
-            name = 'Assistente Financeiro';
-            break;
-        case '4444': // OPERADOR
-            role = 'OPERATOR';
-            name = 'Operador de Caixa';
-            break;
-        default:
-            return false;
-    }
-
-    if (role) {
-        const u: UserProfile = { name, role, companyName: 'Minha Transportadora' };
-        setUser(u);
-        sessionStorage.setItem('onnibox_auth', JSON.stringify(u));
+  const login = (email: string, pass: string) => {
+    // Force init to ensure admin exists
+    storage.init();
+    const users = storage.getUsers();
+    
+    // Find user
+    const found = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.active);
+    
+    if (found && found.password === pass) {
+        // Build Session Profile
+        const profile: UserProfile = { 
+            id: found.id,
+            name: found.name, 
+            email: found.email,
+            role: found.role, 
+            companyName: 'Minha Transportadora' 
+        };
+        
+        setUser(profile);
+        sessionStorage.setItem('onnibox_auth', JSON.stringify(profile));
+        
+        // Audit
+        createAuditLog('User', { id: found.id }, null, 'LOGIN');
+        
+        // Update Last Login (Optional enhancement)
+        // storage.saveUser({ ...found, lastLogin: new Date().toISOString() }); 
+        
         return true;
     }
     return false;
   };
 
   const logout = () => {
+    if (user) {
+        createAuditLog('User', { id: user.id }, null, 'LOGOUT');
+    }
     setUser(null);
     sessionStorage.removeItem('onnibox_auth');
   };

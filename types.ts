@@ -1,8 +1,21 @@
 
-export type UserRole = 'ADMIN' | 'MANAGER' | 'FINANCIAL' | 'OPERATOR';
+export type UserRole = 'ADMIN' | 'MANAGER' | 'FINANCIAL' | 'OPERATOR' | 'AUDITOR';
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  password?: string; // In production, this should be hashed. Here stored for simulation.
+  role: UserRole;
+  active: boolean;
+  createdAt: string;
+  lastLogin?: string;
+}
 
 export interface UserProfile {
+  id: string;
   name: string;
+  email: string;
   role: UserRole;
   companyName: string;
 }
@@ -19,7 +32,7 @@ export interface Notification {
 export interface AuditLog {
   id: string;
   timestamp: string;
-  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'CLOSE' | 'REOPEN';
+  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'CLOSE' | 'REOPEN' | 'LOGIN' | 'LOGOUT';
   entity: string; // Ex: 'RouteCash', 'Fuel', 'User'
   entityId: string;
   userId: string;

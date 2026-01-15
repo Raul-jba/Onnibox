@@ -16,8 +16,8 @@ export type Permission =
 
 const PERMISSION_MATRIX: Record<Permission, UserRole[]> = {
     // 1. Dashboard & Visibility
-    view_dashboard_full: ['ADMIN', 'MANAGER'], 
-    view_reports: ['ADMIN', 'MANAGER', 'FINANCIAL'],
+    view_dashboard_full: ['ADMIN', 'MANAGER', 'AUDITOR'], 
+    view_reports: ['ADMIN', 'MANAGER', 'FINANCIAL', 'AUDITOR'],
     
     // 2. Modules Access
     manage_financials: ['ADMIN', 'MANAGER', 'FINANCIAL'],
@@ -48,7 +48,8 @@ export const usePermission = () => {
             case 'ADMIN': return 'Administrador';
             case 'MANAGER': return 'Gestor de Frota';
             case 'FINANCIAL': return 'Financeiro';
-            case 'OPERATOR': return 'Operador de Caixa';
+            case 'OPERATOR': return 'Operador';
+            case 'AUDITOR': return 'Auditor';
             default: return 'Visitante';
         }
     };

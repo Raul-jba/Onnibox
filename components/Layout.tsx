@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -23,8 +22,39 @@ import {
   ShieldCheck,
   Eye,
   Network,
-  User
+  User,
+  Users
 } from 'lucide-react';
+
+// --- SHARED COMPONENTS (Card & Button) ---
+
+export const Card: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ className, ...props }) => {
+  return (
+    <div className={`bg-white rounded-xl shadow-sm ${className || ''}`} {...props} />
+  );
+};
+
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
+}
+
+export const Button: React.FC<ButtonProps> = ({ className = '', variant = 'primary', ...props }) => {
+  const variants = {
+    primary: 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm',
+    secondary: 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 shadow-sm',
+    danger: 'bg-red-600 text-white hover:bg-red-700 shadow-sm',
+    ghost: 'text-slate-500 hover:text-slate-700 hover:bg-slate-100',
+  };
+  
+  return (
+    <button 
+      className={`px-4 py-2 rounded-lg font-bold transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${variants[variant]} ${className}`}
+      {...props} 
+    />
+  );
+};
+
+// --- LAYOUT COMPONENTS ---
 
 const NavItem = ({ to, icon: Icon, label, collapsed }: { to: string; icon: any; label: string; collapsed: boolean }) => {
   return (
@@ -67,6 +97,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     if (path.includes('audit')) return 'Auditoria';
     if (path.includes('evolution')) return 'Roadmap Sistema';
     if (path.includes('registries')) return 'Cadastros';
+    if (path.includes('users')) return 'Gestão de Usuários';
     return 'OnniBox';
   };
 
@@ -151,7 +182,10 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           )}
           
           {can('manage_system') && (
-            <NavItem to="/evolution" icon={Network} label="Roadmap Sistema" collapsed={isCollapsed} />
+            <>
+              <NavItem to="/users" icon={Users} label="Usuários" collapsed={isCollapsed} />
+              <NavItem to="/evolution" icon={Network} label="Roadmap Sistema" collapsed={isCollapsed} />
+            </>
           )}
 
           {/* Operator can access registries to View Drivers/Vehicles/Lines but not Edit System */}
@@ -184,41 +218,5 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         </div>
       </main>
     </div>
-  );
-};
-
-export const Card = ({ children, className = '' }: { children?: React.ReactNode, className?: string }) => (
-  <div className={`bg-white rounded-lg shadow-sm border border-slate-200 p-6 ${className}`}>
-    {children}
-  </div>
-);
-
-export const Button = ({ 
-  children, onClick, variant = 'primary', className = '', type = 'button', disabled = false 
-}: { 
-  children?: React.ReactNode, 
-  onClick?: () => void, 
-  variant?: 'primary' | 'secondary' | 'danger' | 'success', 
-  className?: string,
-  type?: 'button' | 'submit',
-  disabled?: boolean
-}) => {
-  const baseStyle = "px-4 py-2 rounded-md font-semibold transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm shadow-sm";
-  const variants = {
-    primary: "bg-blue-600 text-white hover:bg-blue-700 border border-transparent active:bg-blue-800",
-    secondary: "bg-white text-blue-600 border border-blue-200 hover:bg-blue-50 hover:border-blue-300",
-    danger: "bg-red-50 text-red-600 hover:bg-red-100 border border-red-200",
-    success: "bg-emerald-600 text-white hover:bg-emerald-700 border border-transparent"
-  };
-
-  return (
-    <button 
-      type={type}
-      className={`${baseStyle} ${variants[variant]} ${className}`} 
-      onClick={onClick}
-      disabled={disabled}
-    >
-      {children}
-    </button>
   );
 };
