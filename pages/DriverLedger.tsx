@@ -11,8 +11,15 @@ import {
 const formatMoney = (val: number) => 
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
-// Components
-const DriverCard = ({ driver, balance, onClick, isSelected }: { driver: Driver, balance: number, onClick: () => void, isSelected: boolean }) => (
+// Components Typed Correctly
+interface DriverCardProps {
+    driver: Driver;
+    balance: number;
+    onClick: () => void;
+    isSelected: boolean;
+}
+
+const DriverCard: React.FC<DriverCardProps> = ({ driver, balance, onClick, isSelected }) => (
     <div 
         onClick={onClick}
         className={`p-4 rounded-xl border cursor-pointer transition-all hover:shadow-md ${isSelected ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-100' : 'bg-white border-slate-200 hover:border-blue-200'}`}
@@ -35,7 +42,12 @@ const DriverCard = ({ driver, balance, onClick, isSelected }: { driver: Driver, 
     </div>
 );
 
-const TransactionRow = ({ entry, onDelete }: { entry: DriverLedgerEntry, onDelete: (id: string) => void }) => (
+interface TransactionRowProps {
+    entry: DriverLedgerEntry;
+    onDelete: (id: string) => void;
+}
+
+const TransactionRow: React.FC<TransactionRowProps> = ({ entry, onDelete }) => (
     <div className="flex items-center justify-between p-4 bg-white border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
         <div className="flex items-center gap-4">
             <div className={`p-2 rounded-lg ${entry.type === 'DEBIT' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>

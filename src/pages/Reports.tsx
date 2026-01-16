@@ -50,7 +50,7 @@ const REPORT_LIST: ReportDefinition[] = [
   { id: 'AUDIT_CLOSING', category: 'AUDIT', title: 'Auditoria de Fechamentos (Quebras)', description: 'Histórico de diferenças (sobras/faltas) apuradas no fechamento diário.', orientation: 'portrait' },
 ];
 
-const formatMoney = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const formatMoney = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
 // --- PRINTABLE COMPONENT ---
 const PrintableReport = React.forwardRef<HTMLDivElement, { 
