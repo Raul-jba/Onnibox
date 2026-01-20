@@ -301,15 +301,13 @@ export const ReportsPage: React.FC = () => {
         const totalExp = Object.values(lineStats).reduce((a,b) => a + b.exp, 0);
         const totalPax = Object.values(lineStats).reduce((a,b) => a + b.pax, 0);
 
-        rows.push(['TOTAL', '', totalPax, formatMoney(totalRev), formatMoney(totalExp), formatMoney(totalRev - totalExp)]);
-
         return {
             headers: ['Linha / Itinerário', 'Viagens', 'Passageiros', 'Receita Bruta', 'Despesas (Vale)', 'Resultado Líquido'],
             rows,
             summary: [
                 { label: 'Total Receita Linhas', value: totalRev, color: '#1e293b' },
                 { label: 'Total Despesas', value: totalExp, color: '#dc2626' },
-                { label: 'Margem Bruta', value: ((1 - (totalExp/totalRev))*100).toFixed(1) + '%', color: '#16a34a' }
+                { label: 'Margem Bruta', value: totalRev > 0 ? ((1 - (totalExp/totalRev))*100).toFixed(1) + '%' : '0.0%', color: '#16a34a' }
             ],
             generatedAt: new Date().toLocaleString()
         };
